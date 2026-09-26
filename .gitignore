@@ -1,0 +1,49 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+
+# Privacy: raw camera data must never be committed
+*.mp4
+*.avi
+*.mov
+*.mkv
+frames/
+recordings/
+
+# ML data & weights (share via team drive)
+data/
+datasets/
+*.pt
+*.pth
+*.onnx
+*.h5
+*.ckpt
+*.tflite
+runs/
+wandb/
+mlruns/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
