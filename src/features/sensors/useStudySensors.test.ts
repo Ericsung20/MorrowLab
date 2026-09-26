@@ -1,0 +1,33 @@
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { useStudySensors } from './useStudySensors';
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+it('keeps timers, activity and manual events usable without camera and truncates on stop', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(10000);
+  const { result, unmount } = renderHook(() => useStudySensors({ current: null }));
+  await act(() => result.current.start());
+  expect(result.current.status).toBe('error');
+  act(() => result.current.simulatePhone());
+  act(() => vi.advanceTimersByTime(5000));
+  expect(result.current.phoneEventCount).toBe(1);
+  act(() => result.current.simulateAway());
+  act(() => vi.advanceTimersByTime(2000));
+  let stopped: ReturnType<typeof result.current.stop>;
+  act(() => { stopped = result.current.stop(); });
+  expect(stopped!.cameraEvents.map(e => [e.type, e.durationSec, e.source])).toEqual([['phone', 5, 'manual'], ['away', 2, 'manual']]);
+  expect(result.current.elapsedSeconds).toBe(7);
+  expect(stopped!.activitySegments.length).toBeGreaterThan(0);
+  expect(vi.getTimerCount()).toBe(0);
+  unmount();
+});
+it('cleans timers on unmount and resets events on restart', async () => {
+  vi.useFakeTimers();
+  const ref = { current: null };
+  const { result, unmount } = renderHook(() => useStudySensors(ref, { demoActivity: true }));
+  await act(() => result.current.start());
+  act(() => result.current.simulatePhone()); act(() => vi.advanceTimersByTime(1000));
+  act(() => { result.current.stop(); });
+  await act(() => result.current.start());
+  expect(result.current.cameraEvents).toEqual([]);
+  unmount(); expect(vi.getTimerCount()).toBe(0);
+});
