@@ -24,6 +24,8 @@ export class CameraEngine {
     this.stop();
     const generation = this.generation;
     this.callbacks.onStatus?.('loading');
+    let stage = 'Camera permission';
+    let previewStarted = false;
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access is unavailable in this browser.');
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false });
@@ -33,8 +35,12 @@ export class CameraEngine {
       video.srcObject = stream;
       video.muted = true;
       video.playsInline = true;
+      video.autoplay = true;
+      stage = 'Video playback';
       await video.play();
       if (generation !== this.generation) return;
+      previewStarted = true;
+      stage = 'Detection model initialization/download';
       const tf = await import('@tensorflow/tfjs');
       await tf.ready();
       const coco = await import('@tensorflow-models/coco-ssd');
@@ -65,30 +71,35 @@ export class CameraEngine {
             throw new Error('The camera is not providing video frames.');
           }
           if (generation === this.generation) this.timer = setTimeout(() => void infer(), INFERENCE_INTERVAL_MS);
-        } catch (error) { if (generation === this.generation) this.fail(error); }
+        } catch (error) { if (generation === this.generation) this.fail(error, true, 'Detection'); }
       };
       void infer();
-    } catch (error) { if (generation === this.generation) this.fail(error); }
+    } catch (error) { if (generation === this.generation) this.fail(error, previewStarted, stage); }
   }
 
-  private fail(error: unknown) {
-    this.stop();
+  private fail(error: unknown, preservePreview = false, stage = 'Camera') {
+    if (preservePreview) this.stopInference();
+    else this.stop();
     this.callbacks.onStatus?.('error');
     const detail = error instanceof Error ? error.message : 'Camera or model unavailable.';
-    this.callbacks.onError(`${detail} Session tracking can continue with manual demo controls.`);
+    this.callbacks.onError(`${stage}: ${detail}${preservePreview ? ' Camera preview remains available; automatic detection is stopped.' : ''} Session tracking can continue with manual demo controls.`);
   }
 
-  stop() {
+  private stopInference() {
     this.generation++;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    this.stream?.getTracks().forEach(track => track.stop());
-    if (this.video) { this.video.pause(); this.video.srcObject = null; }
-    this.stream = null;
-    this.video = null;
     this.model?.dispose();
     this.model = null;
     if (this.canvas) { this.canvas.width = 0; this.canvas.height = 0; }
     this.canvas = null;
+  }
+
+  stop() {
+    this.stopInference();
+    this.stream?.getTracks().forEach(track => track.stop());
+    if (this.video) { this.video.pause(); this.video.srcObject = null; }
+    this.stream = null;
+    this.video = null;
   }
 }

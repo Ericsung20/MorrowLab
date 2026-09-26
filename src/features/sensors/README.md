@@ -29,6 +29,9 @@ Public fields: `status`, `modelStatus`, `currentState`, `confidence`,
 - The timer and activity tracking start before camera/model initialization.
   `status: 'error'` is a recoverable camera warning: the session remains running
   until `stop()`. Manual simulation requires a started session but no webcam.
+  If model loading or inference fails after video playback starts, the preview
+  stays live while automatic detection stops. The error identifies the failed
+  stage. Explicit `stop()` or unmount still releases the camera tracks.
 - Manual controls create real-time intervals, replace a previous manual interval,
   suppress model samples during the interval, and truncate at stop. They never
   fabricate future completed events. Confidence 1 means a certain manual action,

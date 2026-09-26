@@ -62,11 +62,27 @@ it('releases a model resolving after stop without starting inference', async () 
   expect(stop).toHaveBeenCalledOnce(); expect(model.dispose).toHaveBeenCalledOnce(); expect(model.detect).not.toHaveBeenCalled();
 });
 
-it('reports model failure and stops camera tracks', async () => {
+it('preserves preview on model failure and releases camera when explicitly stopped', async () => {
   const { video, stop } = setupVideo();
   mocks.load.mockRejectedValue(new Error('WebGL unavailable'));
   const error = vi.fn();
-  await new CameraEngine({ onSample: vi.fn(), onError: error }).start(video);
-  expect(stop).toHaveBeenCalledOnce();
+  const engine = new CameraEngine({ onSample: vi.fn(), onError: error });
+  await engine.start(video);
+  expect(stop).not.toHaveBeenCalled();
+  expect(video.srcObject).not.toBeNull();
+  expect(error).toHaveBeenCalledWith(expect.stringContaining('Detection model initialization/download'));
   expect(error).toHaveBeenCalledWith(expect.stringContaining('manual demo controls'));
+  engine.stop();
+  expect(stop).toHaveBeenCalledOnce();
+  expect(video.srcObject).toBeNull();
+});
+
+it('reports playback failure and releases the acquired camera', async () => {
+  const { video, stop } = setupVideo();
+  vi.mocked(video.play).mockRejectedValue(new Error('Playback blocked'));
+  const error = vi.fn();
+  await new CameraEngine({ onSample: vi.fn(), onError: error }).start(video);
+  expect(error).toHaveBeenCalledWith(expect.stringContaining('Video playback: Playback blocked'));
+  expect(stop).toHaveBeenCalledOnce();
+  expect(mocks.load).not.toHaveBeenCalled();
 });

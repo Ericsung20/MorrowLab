@@ -24,6 +24,7 @@ export function Sandbox() {
   const [completion, setCompletion] = useState(80)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [preview, setPreview] = useState('대기')
 
   async function refresh() {
     const [nextTasks, nextSessions, nextInsights, nextRecommendations] = await Promise.all([
@@ -65,12 +66,21 @@ export function Sandbox() {
       </select></label>
       <p><label><input type="checkbox" checked={camera} disabled={!!active || busy} onChange={e => setCamera(e.target.checked)} /> 실제 웹캠 사용 (선택)</label></p>
       <p>체크하지 않으면 카메라 권한 없이 수동 이벤트를 시험합니다. 실제 웹캠은 모델 다운로드가 필요하며 사람·휴대폰의 관찰 결과만 기록합니다.</p>
-      {camera && <video ref={videoRef} muted playsInline style={{ width: 320, maxWidth: '100%', background: '#111' }} />}
+      {camera && <>
+        <video ref={videoRef} autoPlay muted playsInline
+          onPlaying={() => setPreview('영상 재생 중')}
+          onWaiting={() => setPreview('영상 프레임 대기 중')}
+          onEmptied={() => setPreview('영상 연결 종료')}
+          onError={() => setPreview('영상 재생 오류')}
+          style={{ width: 320, height: 240, maxWidth: '100%', background: '#111', objectFit: 'contain' }} />
+        <p role="status">카메라: {preview} · 감지 모델: {sensors.modelStatus === 'loading' ? '다운로드·초기화 중' : sensors.modelStatus === 'ready' ? '준비 완료' : sensors.modelStatus === 'error' ? '오류 (아래 안내 확인)' : '대기'}</p>
+      </>}
       <div className="actions">
         <button disabled={busy || !!active || !selected} onClick={() => void run(async () => {
           const session = await service.startSession(selected)
           setActive(session); setStopped(undefined)
-          await sensors.start()
+          setPreview('카메라 연결 중')
+          void sensors.start().catch(error => setMessage(String(error)))
         })}>공부 시작</button>
         <button disabled={!active || !!stopped} onClick={() => sensors.simulatePhone(5)}>휴대폰 5초</button>
         <button disabled={!active || !!stopped} onClick={() => sensors.simulateAway(5)}>자리 비움 5초</button>
