@@ -1,7 +1,7 @@
 # Web App
 
-planner · dashboard · insights · reflection
+Planner · dashboard · insights · reflection
 
-## 실행 방법
+## How to run
 
 _TODO_

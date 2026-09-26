@@ -1,7 +1,7 @@
 # Backend API
 
-auth · tasks · sessions · aggregated events · recommendations
+Auth · tasks · sessions · aggregated events · recommendations
 
-## 실행 방법
+## How to run
 
 _TODO_

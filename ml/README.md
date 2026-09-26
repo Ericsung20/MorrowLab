@@ -1,7 +1,7 @@
 # ML
 
-camera behavior recognition · study effectiveness model · evaluation
+Camera behavior recognition · study effectiveness model · evaluation
 
-## 실행 방법
+## How to run
 
 _TODO_

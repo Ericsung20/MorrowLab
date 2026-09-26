@@ -1,12 +1,12 @@
-## 무엇을
-<!-- 이 PR이 하는 일 한두 줄 -->
+## What
+<!-- What this PR does, in 1–2 lines -->
 
-## 왜
-<!-- 관련 PRD 섹션 / 이슈 -->
+## Why
+<!-- Related PRD section or issue -->
 
-## 테스트 방법
-<!-- 리뷰어가 확인하는 방법 -->
+## How to test
+<!-- Steps for the reviewer -->
 
-## 체크
-- [ ] raw video / 개인 데이터 / 키가 커밋에 없음
-- [ ] 다른 영역에 영향 주는 변경이면 해당 담당자를 리뷰어로 지정
+## Checklist
+- [ ] No raw video, personal data, or secrets in this PR
+- [ ] If this changes another area (API, event format, DB), that owner is a reviewer
