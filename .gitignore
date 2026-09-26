@@ -15,8 +15,8 @@ frames/
 recordings/
 
 # ML data & weights (share via team drive)
-data/
-datasets/
+/data/
+/datasets/
 *.pt
 *.pth
 *.onnx
@@ -47,3 +47,8 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# Vite
+dist-ssr/
+*.local
+*.log

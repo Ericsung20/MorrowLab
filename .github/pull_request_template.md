@@ -8,5 +8,7 @@
 <!-- Steps for the reviewer -->
 
 ## Checklist
+- [ ] `npm run build && npm test` pass
+- [ ] No changes to `package.json` / lockfile (unless this PR targets `integration-base` to add a dependency)
+- [ ] If `src/shared/` or `src/app/` changed, the team knows
 - [ ] No raw video, personal data, or secrets in this PR
-- [ ] If this changes another area (API, event format, DB), that owner is a reviewer

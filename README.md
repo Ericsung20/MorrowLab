@@ -3,7 +3,7 @@
 > Personalized Learning Analytics & Adaptive Study Planning
 > A product that answers **"How do I learn best?"** with data.
 
-MorrowLab observes how you actually study (camera behavior events, app/site usage) and connects it to learning outcomes (self-evaluation, recall). It learns which study conditions work best for you and automatically reschedules your next sessions.
+MorrowLab observes how you actually study (camera behavior events, tab/app activity) and connects it to learning outcomes (self-evaluation, recall). It learns which study conditions work best for you and automatically reschedules your next sessions.
 
 **Core loop:** Plan → Start → Observe → Reflect → Analyze → Adapt
 
@@ -11,27 +11,44 @@ MorrowLab observes how you actually study (camera behavior events, app/site usag
 
 ---
 
+## Tech Stack
+
+React + TypeScript + Vite · React Router · Dexie (IndexedDB, local-first) · Recharts · date-fns · lucide-react · TensorFlow.js + COCO-SSD (in-browser camera detection) · Vitest + Testing Library
+
+## Getting Started
+
+```bash
+git clone https://github.com/Ericsung20/MorrowLab.git
+cd MorrowLab
+git checkout integration-base
+npm install
+npm run dev        # http://localhost:5173
+```
+
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Start the dev server |
+| `npm run build` | Type-check and build |
+| `npm test` | Run tests once |
+| `npm run lint` | Lint |
+
+> **Windows:** don't clone into OneDrive (e.g. Desktop synced to OneDrive). OneDrive sync can corrupt the `.git` folder. Use something like `C:\Users\<you>\dev\MorrowLab`.
+
+---
+
 ## Project Structure
 
 ```
-MorrowLab/
-├── desktop/     Desktop client — camera inference, app/site tracking, session timer
-├── backend/     API — auth, tasks, sessions, aggregated events, recommendations
-├── web/         Web app — planner, dashboard, insights, reflection
-├── ml/          Camera behavior model, study effectiveness model, evaluation
-├── docs/        PRD, API spec, decision log, design
-└── .github/     PR template
+src/
+├── app/         App shell and routes                (shared)
+├── shared/      Types shared by every module         (shared — coordinate before editing)
+├── ui/          Pages, components, styling           → feature/ui
+├── data/        Dexie DB, tasks/sessions, analytics, scheduling  → feature/data-engine
+└── sensors/     Camera behavior detection, tab/app activity      → feature/sensors
+docs/            PRD, decisions
 ```
 
-| Folder | Owner | Scope |
-|--------|-------|-------|
-| `desktop/` | Dev A — _name_ | Camera pipeline, local event layer, local inference optimization |
-| `backend/` | Dev B — _name_ | Data model, API, scheduling logic, deployment |
-| `web/` | Dev C — _name_ | Planner, dashboard, reflection UI, calendar integration |
-| `ml/` | Everyone | Data collection, labeling, training, evaluation |
-| `docs/` | Everyone + UI/UX | Specs, decisions, design |
-
-> ML is not owned by one person. Everyone takes part in data collection, labeling, and evaluation.
+Each feature branch owns one folder. Modules talk to each other only through `src/shared/types.ts` and each folder's `index.ts`.
 
 ---
 
@@ -40,53 +57,60 @@ MorrowLab/
 ### Branches
 
 ```
-main ─────●─────────●─────────●─────────●──────▶   always runnable, protected
-           \       /  \       /  \       /
-            ●──●──●    ●──●──●    ●──●──●
-     feat/desktop-   feat/backend-   fix/web-
-     camera-events   session-api     chart-bug
+main              ●───────────────────────────────●────▶   stable / demo-ready
+                   \                             /
+integration-base    ●─────●─────────●─────────●─●──────▶   everyone merges here
+                     \   / \       /  \      /
+feature/ui            ●─●   \     /    \    /
+feature/data-engine          ●─●─●      \  /
+feature/sensors                          ●●
 ```
 
-- **`main`** is always runnable. **No direct pushes.** Everything goes in through a Pull Request.
-- **Work branches** are named after the *task*, not the person:
-  `<type>/<area>-<short-description>`
+| Branch | Purpose | Who pushes |
+|--------|---------|-----------|
+| `main` | Stable, demo-ready version | Merged from `integration-base` only, when it works end-to-end |
+| `integration-base` | Shared working base. Always builds and runs | Merged from feature branches via PR |
+| `feature/ui` | Pages, components, styling (`src/ui/`) | UI owner |
+| `feature/data-engine` | Storage, analytics, scheduling (`src/data/`) | Data owner |
+| `feature/sensors` | Camera + activity tracking (`src/sensors/`) | Sensors owner |
 
-| Type | Use for | Example |
-|------|---------|---------|
-| `feat` | New feature | `feat/backend-session-api` |
-| `fix` | Bug fix | `fix/web-dashboard-chart` |
-| `ml` | Model / data / evaluation work | `ml/camera-f1-eval` |
-| `refactor` | Code cleanup, no behavior change | `refactor/desktop-event-layer` |
-| `docs` | Documentation | `docs/api-spec` |
-| `chore` | Config, dependencies, tooling | `chore/setup-eslint` |
+### Setup (once per computer)
 
-- Keep branches **short-lived**: merge within 2–3 days. If it's bigger, split it.
+```bash
+git clone https://github.com/Ericsung20/MorrowLab.git
+cd MorrowLab
+git checkout <your-feature-branch>     # feature/ui, feature/data-engine, or feature/sensors
+npm install
+```
 
 ### Daily Flow
 
 ```bash
-# 1. Start from the latest main
-git checkout main
-git pull origin main
+# 1. Get the latest shared work into your branch
+git checkout feature/ui
+git pull origin integration-base
 
-# 2. Create a branch for your task
-git checkout -b feat/backend-session-api
-
-# 3. Work and commit in small steps
+# 2. Work and commit in small steps
 git add .
-git commit -m "backend: add session start/end endpoints"
+git commit -m "ui: add planner task list"
 
-# 4. Sync with main before pushing
-git pull --rebase origin main
-git push -u origin feat/backend-session-api
+# 3. Push your branch
+git push origin feature/ui
 ```
 
-Then on GitHub:
+When a piece works, open a PR on GitHub: **`feature/ui` → `integration-base`**.
+After 1 approval → **Merge** (keep the feature branch; you keep working on it).
+Then everyone else runs `git pull origin integration-base` in their own branch.
 
-1. Click **Compare & pull request**
-2. Fill in the PR template and add **1 reviewer**
-3. After approval → **Squash and merge** → **Delete branch**
-4. Locally: `git checkout main && git pull origin main`
+**Release to main:** when `integration-base` builds, passes tests, and the core loop works, open a PR **`integration-base` → `main`**.
+
+### Rules
+
+1. **Don't touch `package.json` / `package-lock.json` in feature branches.** Need a new dependency? Add it on `integration-base` first (small PR), then everyone pulls it. This avoids lockfile conflicts.
+2. **Stay in your folder.** Changing `src/shared/types.ts` or `src/app/` → tell the team first and merge that change quickly.
+3. **Merge into `integration-base` often** (at least daily). Small merges = small conflicts.
+4. **Before opening a PR:** `npm run build && npm test` must pass.
+5. **Never push directly to `main`.**
 
 ### Commit Messages
 
@@ -94,30 +118,19 @@ Then on GitHub:
 <area>: <what you did>
 ```
 
-Examples:
-- `desktop: add smoothing for phone_usage events`
-- `backend: add GET /sessions/:id`
-- `web: show weekly distraction chart`
-- `ml: add confusion matrix to eval script`
-
-### Pull Request Rules
-
-- One PR = one task. Keep it reviewable (ideally < 400 lines).
-- At least **1 approval** before merging. Review within **24 hours**.
-- Changes that affect another area (API schema, event format, DB model) → add that area's owner as a reviewer.
-- Never merge your own PR without a review.
+`ui: add session timer page` · `data: add daily completion stats` · `sensors: detect phone with coco-ssd` · `shared: add Reflection type`
 
 ### Resolving Conflicts
 
 ```bash
-git pull --rebase origin main
+git pull origin integration-base
 # Open the conflicted files, fix the <<<<<<< ======= >>>>>>> blocks
 git add <file>
-git rebase --continue
-git push --force-with-lease
+git commit
+git push origin <your-branch>
 ```
 
-> `--force-with-lease` is OK **only on your own work branch**. Never force-push to `main`.
+> Lockfile conflict? Take the `integration-base` version: `git checkout --theirs package-lock.json && npm install`.
 > Stuck for more than 15 minutes? Ask the team.
 
 ---
@@ -126,21 +139,7 @@ git push --force-with-lease
 
 These come from PRD §05 and apply to the code as well:
 
-- **Never commit or upload raw video or camera frames.** Discard frames right after inference.
-- The server only receives events: `{event, start, duration, confidence}`
-- Datasets and model weights do **not** go in this repo (see `.gitignore`). Share them through the team drive.
+- **Never store, commit, or upload raw video or camera frames.** Run inference in the browser and discard frames immediately.
+- Only aggregated events are stored: `{event, start, durationSec, confidence}` (see `SensorEvent` in `src/shared/types.ts`).
+- Datasets and model weights do **not** go in this repo (see `.gitignore`).
 - API keys and tokens go in `.env` only. Add the variable *name* to `.env.example`.
-
----
-
-## Getting Started
-
-```bash
-git clone https://github.com/Ericsung20/MorrowLab.git
-cd MorrowLab
-cp .env.example .env
-```
-
-See the README in each folder for how to run that part.
-
-> **Windows:** don't clone into OneDrive (e.g. Desktop synced to OneDrive). OneDrive sync can corrupt the `.git` folder. Use something like `C:\Users\<you>\dev\MorrowLab`.

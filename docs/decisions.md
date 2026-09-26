@@ -11,15 +11,15 @@
 | 5 | Recommended schedule: auto-apply to calendar, or after approval? | | |
 | 6 | Opt-in UX for using beta data in model training? | | |
 
-## Tech Stack (TBD)
+## Tech Stack
 
 | Area | Choice | Why |
 |------|--------|-----|
-| Desktop | | |
-| Backend | | |
-| Web | | |
-| Database | | |
-| ML | | |
+| Platform | Web app (browser) | TF.js runs camera inference locally in the browser |
+| Storage | Dexie (IndexedDB) | Local-first, no raw data leaves the device |
+| Frontend | React + TypeScript + Vite | |
+| Charts | Recharts | |
+| ML | TensorFlow.js + COCO-SSD | Detects person + cell phone → studying / phone_usage / away |
 
 ## Decision Log
 
