@@ -23,6 +23,13 @@ Public fields: `status`, `modelStatus`, `currentState`, `confidence`,
 `cameraEvents`, `activitySegments`, `error`, `start`, `stop`,
 `simulatePhone(durationSec = 5)`, `simulateAway(durationSec = 5)`.
 
+`setStudyMode('strict' | 'research' | 'lecture')` selects how future off-page
+intervals are labeled, before or during a session. Strict is the default.
+Research/lecture are self-declared study purposes, not classification of another
+website's content. Switching mode closes the previous interval without relabeling
+past time. Return to strict mode when external study ends. Labels are defined in
+`src/contracts/activity.ts`; the persisted `ActivitySegment` shape is unchanged.
+
 - `start()` is asynchronous and idempotent while monitoring. Invoke only on a
   user action. A rendered video element, secure context (HTTPS or localhost),
   and camera permission are needed for camera inference.

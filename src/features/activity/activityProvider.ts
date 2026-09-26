@@ -1,9 +1,11 @@
 import type { ActivitySegment } from '../../contracts/morrowlab';
+import { ACTIVITY_LABELS, type StudyActivityMode } from '../../contracts/activity';
 
 export interface ActivityProvider {
   start(): void;
   stop(): ActivitySegment[];
   getSegments(): ActivitySegment[];
+  setStudyMode?(mode: StudyActivityMode): void;
 }
 
 /** Shared interval logic; snapshots include the current interval without closing it. */
@@ -33,7 +35,16 @@ export class BrowserActivityProvider implements ActivityProvider {
   private timeline = new ActivityTimeline('browser');
   private running = false;
   private focused = false;
-  private update = () => this.timeline.transition(document.visibilityState === 'visible' && this.focused ? 'MorrowLab active' : 'Other tab/window');
+  private mode: StudyActivityMode = 'strict';
+  setStudyMode(mode: StudyActivityMode) {
+    this.mode = mode;
+    if (this.running) this.update();
+  }
+  private update = () => {
+    if (!this.running) return;
+    const active = document.visibilityState === 'visible' && this.focused;
+    this.timeline.transition(active ? ACTIVITY_LABELS.active : this.mode === 'strict' ? ACTIVITY_LABELS.other : ACTIVITY_LABELS[this.mode]);
+  };
   private focus = () => { this.focused = true; this.update(); };
   private blur = () => { this.focused = false; this.update(); };
   start() {

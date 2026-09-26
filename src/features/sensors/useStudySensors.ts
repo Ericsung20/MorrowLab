@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import type { StudyActivityMode } from '../../contracts/activity';
 import type { ActivitySegment, CameraEvent, CameraEventType } from '../../contracts/morrowlab';
 import { BrowserActivityProvider, DemoActivityProvider } from '../activity/activityProvider';
 import type { ActivityProvider } from '../activity/activityProvider';
@@ -31,6 +32,7 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
     timer: ReturnType<typeof setInterval> | null; manual: CameraEvent | null;
   }>({ running: false, started: 0, ended: 0, status: 'idle', modelStatus: 'idle', error: null, events: [], smoother: new EventSmoother(), provider: null, engine: null, timer: null, manual: null });
   const mounted = useRef(true);
+  const activityMode = useRef<StudyActivityMode>('strict');
 
   const finishManual = useCallback((now: number) => {
     const r = runtime.current;
@@ -83,6 +85,7 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
     r.manual = null;
     r.smoother = new EventSmoother();
     r.provider = options.demoActivity ? new DemoActivityProvider() : new BrowserActivityProvider();
+    r.provider.setStudyMode?.(activityMode.current);
     r.provider.start();
     r.timer = setInterval(publish, 1000);
     const engine = new CameraEngine({
@@ -111,6 +114,11 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
     publish();
   }, [finishManual, publish]);
 
+  const setStudyMode = useCallback((mode: StudyActivityMode) => {
+    activityMode.current = mode;
+    runtime.current.provider?.setStudyMode?.(mode);
+    publish();
+  }, [publish]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; stop(); }; }, [stop]);
-  return { ...snapshot, start, stop, simulatePhone: (durationSec = 5) => simulate('phone', durationSec), simulateAway: (durationSec = 5) => simulate('away', durationSec) };
+  return { ...snapshot, start, stop, setStudyMode, simulatePhone: (durationSec = 5) => simulate('phone', durationSec), simulateAway: (durationSec = 5) => simulate('away', durationSec) };
 }

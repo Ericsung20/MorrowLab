@@ -40,6 +40,15 @@ storage errors. Components do not need to import Dexie or the pure engines.
 
 ## Analytics and scheduling conventions
 
+- New completions with recognized browser activity use focus 30%, understanding
+  30%, completion 20%, camera behavior 10%, and screen activity 10%. Screen score
+  is 100 times the study share of recognized recorded screen time. `Other
+  tab/window` counts as off-task; `MorrowLab active` and explicitly self-reported
+  research/lecture intervals count as study. Unknown labels and demo activity
+  are excluded. If no screen measurement exists, use the original 35/35/20/10
+  weights. Stored historical scores are not rewritten; comparisons can therefore
+  include scores produced with the older formula.
+
 - Time buckets use the device's current local timezone. Morning is 06:00–11:59,
   afternoon 12:00–17:59, and evening 18:00–05:59.
 - `dateISO` in recommendations is a local `YYYY-MM-DD` calendar date; `startTime`
