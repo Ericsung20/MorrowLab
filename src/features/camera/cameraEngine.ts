@@ -1,20 +1,53 @@
-import type { ObjectDetection } from '@tensorflow-models/coco-ssd';
-import { deriveSample, INFERENCE_INTERVAL_MS } from './cameraTypes';
-import type { CameraSample, ModelStatus } from './cameraTypes';
+import type { FaceLandmarker, ObjectDetector } from '@mediapipe/tasks-vision';
+import { FocusClassifier, facePose, INFERENCE_INTERVAL_MS, PERSON_THRESHOLD } from './cameraTypes';
+import type { CameraSample, FrameObservation, ModelStatus } from './cameraTypes';
+
+// Models run locally in the browser; only the model files are downloaded (and cached) once.
+const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
+const FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+// EfficientDet-Lite2 catches small or partly visible phones far better than COCO-SSD lite.
+const OBJECT_MODEL = 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float32/1/efficientdet_lite2.tflite';
 
 interface CameraCallbacks {
   onSample(sample: CameraSample): void;
   onStatus?(status: ModelStatus): void;
   onError(message: string): void;
 }
+interface Models { objects: ObjectDetector; faces: FaceLandmarker }
+
+async function loadModels(): Promise<Models> {
+  const vision = await import('@mediapipe/tasks-vision');
+  const fileset = await vision.FilesetResolver.forVisionTasks(WASM_URL);
+  const create = async (delegate: 'GPU' | 'CPU'): Promise<Models> => {
+    const [objects, faces] = await Promise.allSettled([
+      vision.ObjectDetector.createFromOptions(fileset, { baseOptions: { modelAssetPath: OBJECT_MODEL, delegate }, runningMode: 'VIDEO', scoreThreshold: 0.2, maxResults: 10, categoryAllowlist: ['cell phone', 'person'] }),
+      vision.FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetPath: FACE_MODEL, delegate }, runningMode: 'VIDEO', numFaces: 3, outputFaceBlendshapes: true }),
+    ]);
+    if (objects.status === 'fulfilled' && faces.status === 'fulfilled') return { objects: objects.value, faces: faces.value };
+    for (const r of [objects, faces]) if (r.status === 'fulfilled') r.value.close();
+    throw (objects.status === 'rejected' ? objects.reason : (faces as PromiseRejectedResult).reason);
+  };
+  // Some machines lack WebGL2; the CPU path is slower but works everywhere.
+  try { return await create('GPU'); } catch { return create('CPU'); }
+}
+
+export function observe(models: Models, video: HTMLVideoElement, timestamp: number): FrameObservation {
+  const detections = models.objects.detectForVideo(video, timestamp).detections;
+  const best = (name: string) => detections.flatMap(d => d.categories).filter(c => c.categoryName === name).map(c => c.score);
+  const faces = models.faces.detectForVideo(video, timestamp);
+  return {
+    phone: Math.max(0, ...best('cell phone')),
+    people: best('person').filter(s => s >= PERSON_THRESHOLD).length,
+    faces: faces.faceLandmarks.map((landmarks, i) => facePose(landmarks, faces.faceBlendshapes[i]?.categories, video.videoHeight / video.videoWidth || 0.75)),
+  };
+}
 
 export class CameraEngine {
   private generation = 0;
   private stream: MediaStream | null = null;
   private video: HTMLVideoElement | null = null;
-  private model: ObjectDetection | null = null;
+  private models: Models | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private canvas: HTMLCanvasElement | null = null;
 
   private readonly callbacks: CameraCallbacks;
   constructor(callbacks: CameraCallbacks) { this.callbacks = callbacks; }
@@ -41,39 +74,28 @@ export class CameraEngine {
       if (generation !== this.generation) return;
       previewStarted = true;
       stage = 'Detection model initialization/download';
-      const tf = await import('@tensorflow/tfjs');
-      await tf.ready();
-      const coco = await import('@tensorflow-models/coco-ssd');
-      if (generation !== this.generation) return;
-      const model = await coco.load({ base: 'lite_mobilenet_v2' });
-      if (generation !== this.generation) { model.dispose(); return; }
-      this.model = model;
-      const canvas = document.createElement('canvas');
-      canvas.width = 320;
-      canvas.height = 240;
-      this.canvas = canvas;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Local video processing is unavailable.');
+      const models = await loadModels();
+      if (generation !== this.generation) { models.objects.close(); models.faces.close(); return; }
+      this.models = models;
       this.callbacks.onStatus?.('ready');
+      const classifier = new FocusClassifier();
       let lastReady = Date.now();
-      const infer = async () => {
+      let lastFrameTime = -1;
+      const infer = () => {
         if (generation !== this.generation) return;
         try {
           if (video.readyState >= 2 && video.videoWidth > 0) {
             lastReady = Date.now();
-            context.drawImage(video, 0, 0, 320, 240);
-            // COCO's default threshold is too high for the required phone threshold.
-            const detections = await model.detect(canvas, 20, 0.35);
-            context.clearRect(0, 0, 320, 240);
-            if (generation !== this.generation) return;
-            this.callbacks.onSample(deriveSample(detections, Date.now()));
+            // MediaPipe VIDEO mode requires strictly increasing timestamps.
+            lastFrameTime = Math.max(lastFrameTime + 1, performance.now());
+            this.callbacks.onSample(classifier.classify(observe(models, video, lastFrameTime), Date.now()));
           } else if (Date.now() - lastReady > 10000) {
             throw new Error('The camera is not providing video frames.');
           }
-          if (generation === this.generation) this.timer = setTimeout(() => void infer(), INFERENCE_INTERVAL_MS);
+          if (generation === this.generation) this.timer = setTimeout(infer, INFERENCE_INTERVAL_MS);
         } catch (error) { if (generation === this.generation) this.fail(error, true, 'Detection'); }
       };
-      void infer();
+      infer();
     } catch (error) { if (generation === this.generation) this.fail(error, previewStarted, stage); }
   }
 
@@ -89,10 +111,9 @@ export class CameraEngine {
     this.generation++;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    this.model?.dispose();
-    this.model = null;
-    if (this.canvas) { this.canvas.width = 0; this.canvas.height = 0; }
-    this.canvas = null;
+    this.models?.objects.close();
+    this.models?.faces.close();
+    this.models = null;
   }
 
   stop() {

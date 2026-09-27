@@ -1,10 +1,21 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { CameraEngine } from './cameraEngine';
 
-const mocks = vi.hoisted(() => ({ load: vi.fn(), ready: vi.fn() }));
-vi.mock('@tensorflow/tfjs', () => ({ ready: mocks.ready }));
-vi.mock('@tensorflow-models/coco-ssd', () => ({ load: mocks.load }));
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); mocks.load.mockReset(); });
+const mocks = vi.hoisted(() => ({ objects: vi.fn(), faces: vi.fn(), fileset: vi.fn() }));
+vi.mock('@mediapipe/tasks-vision', () => ({
+  FilesetResolver: { forVisionTasks: mocks.fileset },
+  ObjectDetector: { createFromOptions: mocks.objects },
+  FaceLandmarker: { createFromOptions: mocks.faces },
+}));
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); mocks.objects.mockReset(); mocks.faces.mockReset(); });
+
+function models(people = 1) {
+  const objects = { detectForVideo: vi.fn(() => ({ detections: Array.from({ length: people }, () => ({ categories: [{ categoryName: 'person', score: 0.8 }] })) })), close: vi.fn() };
+  const faces = { detectForVideo: vi.fn(() => ({ faceLandmarks: [], faceBlendshapes: [] })), close: vi.fn() };
+  mocks.objects.mockResolvedValue(objects);
+  mocks.faces.mockResolvedValue(faces);
+  return { objects, faces };
+}
 
 it('stops a late permission stream after monitoring has stopped', async () => {
   let resolve!: (stream: MediaStream) => void;
@@ -28,43 +39,60 @@ function setupVideo() {
   Object.defineProperties(video, { readyState: { value: 4 }, videoWidth: { value: 640 } });
   const stop = vi.fn();
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] }) } });
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), clearRect: vi.fn() } as unknown as ReturnType<HTMLCanvasElement['getContext']>);
   return { video, stop };
 }
 
-it('infers locally at a bounded cadence and releases tracks and model on stop', async () => {
+it('infers locally at a bounded cadence and releases tracks and models on stop', async () => {
   vi.useFakeTimers();
   const { video, stop } = setupVideo();
-  const model = { detect: vi.fn().mockResolvedValue([{ class: 'person', score: 0.8 }]), dispose: vi.fn() };
-  mocks.load.mockResolvedValue(model);
+  const { objects, faces } = models();
   const sample = vi.fn();
   const engine = new CameraEngine({ onSample: sample, onError: vi.fn() });
   await engine.start(video);
-  await vi.advanceTimersByTimeAsync(0);
+  // Body visible without a face: treated as studying (head down, writing).
   expect(sample).toHaveBeenCalledWith(expect.objectContaining({ state: 'studying' }));
-  await vi.advanceTimersByTimeAsync(849); expect(model.detect).toHaveBeenCalledTimes(1);
-  await vi.advanceTimersByTimeAsync(1); expect(model.detect).toHaveBeenCalledTimes(2);
+  expect(mocks.objects).toHaveBeenCalledWith(undefined, expect.objectContaining({ runningMode: 'VIDEO', baseOptions: expect.objectContaining({ delegate: 'GPU' }) }));
+  await vi.advanceTimersByTimeAsync(499); expect(objects.detectForVideo).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1); expect(objects.detectForVideo).toHaveBeenCalledTimes(2);
+  const [first, second] = faces.detectForVideo.mock.calls.map(c => (c as unknown[])[1] as number);
+  expect(second).toBeGreaterThan(first);
   engine.stop();
-  expect(stop).toHaveBeenCalledOnce(); expect(model.dispose).toHaveBeenCalledOnce();
+  expect(stop).toHaveBeenCalledOnce(); expect(objects.close).toHaveBeenCalledOnce(); expect(faces.close).toHaveBeenCalledOnce();
   expect(video.srcObject).toBeNull(); expect(vi.getTimerCount()).toBe(0);
 });
 
-it('releases a model resolving after stop without starting inference', async () => {
+it('falls back to the CPU when the GPU delegate is unavailable', async () => {
+  const { video } = setupVideo();
+  const { objects } = models(0);
+  mocks.faces.mockRejectedValueOnce(new Error('WebGL2 unavailable'));
+  const sample = vi.fn();
+  const engine = new CameraEngine({ onSample: sample, onError: vi.fn() });
+  await engine.start(video);
+  expect(objects.close).toHaveBeenCalledOnce(); // GPU object detector released
+  expect(mocks.faces).toHaveBeenLastCalledWith(undefined, expect.objectContaining({ baseOptions: expect.objectContaining({ delegate: 'CPU' }) }));
+  expect(sample).toHaveBeenCalledWith(expect.objectContaining({ state: 'away' }));
+  engine.stop();
+});
+
+it('releases models resolving after stop without starting inference', async () => {
   const { video, stop } = setupVideo();
+  const { objects, faces } = models();
   let resolve!: (model: unknown) => void;
-  mocks.load.mockImplementation(() => new Promise(r => { resolve = r; }));
+  mocks.faces.mockImplementation(() => new Promise(r => { resolve = r; }));
   const engine = new CameraEngine({ onSample: vi.fn(), onError: vi.fn() });
   const starting = engine.start(video);
-  await vi.waitFor(() => expect(mocks.load).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(mocks.faces).toHaveBeenCalledOnce());
   engine.stop();
-  const model = { dispose: vi.fn(), detect: vi.fn() }; resolve(model);
+  resolve(faces);
   await starting;
-  expect(stop).toHaveBeenCalledOnce(); expect(model.dispose).toHaveBeenCalledOnce(); expect(model.detect).not.toHaveBeenCalled();
+  expect(stop).toHaveBeenCalledOnce(); expect(faces.close).toHaveBeenCalledOnce(); expect(objects.close).toHaveBeenCalledOnce();
+  expect(objects.detectForVideo).not.toHaveBeenCalled();
 });
 
 it('preserves preview on model failure and releases camera when explicitly stopped', async () => {
   const { video, stop } = setupVideo();
-  mocks.load.mockRejectedValue(new Error('WebGL unavailable'));
+  mocks.objects.mockRejectedValue(new Error('Model download failed'));
+  mocks.faces.mockRejectedValue(new Error('Model download failed'));
   const error = vi.fn();
   const engine = new CameraEngine({ onSample: vi.fn(), onError: error });
   await engine.start(video);
@@ -84,5 +112,5 @@ it('reports playback failure and releases the acquired camera', async () => {
   await new CameraEngine({ onSample: vi.fn(), onError: error }).start(video);
   expect(error).toHaveBeenCalledWith(expect.stringContaining('Video playback: Playback blocked'));
   expect(stop).toHaveBeenCalledOnce();
-  expect(mocks.load).not.toHaveBeenCalled();
+  expect(mocks.objects).not.toHaveBeenCalled();
 });
