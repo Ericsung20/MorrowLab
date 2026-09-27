@@ -20,7 +20,6 @@ import type {
 import { useLoad } from "../hooks/ui/useLoad";
 import { estimateTaskTime } from "../features/activity/classifyActivity";
 import {
-  ActivityList,
   BehaviorTimeline,
   ErrorNotice,
   Pending,
@@ -54,7 +53,6 @@ export default function Session() {
   const [elapsed, setElapsed] = useState(0);
   const timerStart = useRef(0);
   const running = state.status === "running";
-  const currentTab = state.activitySegments.at(-1);
   useEffect(() => {
     if (!session || capture) return;
     const timer = setInterval(
@@ -413,20 +411,12 @@ export default function Session() {
             </div>
             <h3>Event timeline</h3>
             <BehaviorTimeline events={state.cameraEvents} />
-            <h3>Screen activity</h3>
             {session && !state.extensionConnected && !state.companionConnected && (
               <p className="muted extension-hint">
                 <Puzzle size={14} /> To recognize other tabs and apps as study or distraction, run the desktop companion
                 (<code>npm run companion</code>) and/or install the browser extension (<code>extension/</code>).
               </p>
             )}
-            {currentTab && (
-              <p className="muted">
-                Now: <strong>{currentTab.label}</strong>
-                {currentTab.category && <span className={`category ${currentTab.category}`}>{currentTab.category}</span>}
-              </p>
-            )}
-            <ActivityList segments={state.activitySegments} />
           </aside>
         </div>
       )}
