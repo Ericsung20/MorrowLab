@@ -1,8 +1,6 @@
-/** Stable labels persisted in ActivitySegment without changing the service contract. */
+/** Labels for screen time that has no tab title. */
 export const ACTIVITY_LABELS = {
-  active: 'MorrowLab active',
-  other: 'Other tab/window',
-  research: 'Study: research (self-reported)',
-  lecture: 'Study: lecture (self-reported)',
+  active: 'MorrowLab',
+  outside: 'Outside the browser',
+  other: 'Other tab/window (install the extension to identify it)',
 } as const
-export type StudyActivityMode = 'strict' | 'research' | 'lecture'

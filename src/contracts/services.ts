@@ -16,13 +16,16 @@ export interface MorrowLabDataService {
     deadlineISO: string;
   }): Promise<StudyTask>;
   getTask(id: string): Promise<StudyTask | undefined>;
-  startSession(taskId: string): Promise<StudySession>;
+  startSession(): Promise<StudySession>;
   finishSession(
     sessionId: string,
     input: {
       cameraEvents: CameraEvent[];
       activitySegments: ActivitySegment[];
       reflection: SessionReflection;
+      /** Confirmed seconds per task; titles/subjects are filled in by the service. */
+      taskBreakdown: { taskId: string; seconds: number }[];
+      completedTaskIds: string[];
     },
   ): Promise<StudySession>;
   getSession(id: string): Promise<StudySession | undefined>;
@@ -39,8 +42,16 @@ export interface SensorLiveState {
   studySeconds: number;
   phoneEventCount: number;
   awayEventCount: number;
+  /** distracted + talking events */
+  offTaskEventCount: number;
   cameraEvents: CameraEvent[];
   activitySegments: ActivitySegment[];
+  /** True when the MorrowLab browser extension reports the active tab. */
+  extensionConnected: boolean;
+  /** True when the desktop companion (npm run companion) reports the foreground app. */
+  companionConnected: boolean;
+  /** Live head angle in degrees relative to the calibrated screen pose (+pitch = looking down). */
+  headPose?: { yaw: number; pitch: number } | null;
   error?: string;
 }
 export interface StudySensorController {
@@ -51,7 +62,6 @@ export interface StudySensorController {
   }>;
   simulatePhone(durationSec?: number): void;
   simulateAway(durationSec?: number): void;
-  setStudyMode?(mode: import('./activity').StudyActivityMode): void;
 }
 // Adapter contract: the real hook may attach its local video stream to videoRef.
 export interface StudySensorBinding {
