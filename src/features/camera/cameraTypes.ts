@@ -13,7 +13,8 @@ export interface CameraSample {
 
 /** Head pose in degrees. yaw: turning sideways (either sign); pitch: + = looking down. */
 export interface FaceObservation { yaw: number; pitch: number; jawOpen: number; width: number; expression?: FaceExpression }
-export interface FrameObservation { phone: number; people: number; faces: FaceObservation[] }
+/** phoneY: vertical centre of the detected phone in the frame, 0 = top, 1 = bottom. */
+export interface FrameObservation { phone: number; phoneY?: number; people: number; faces: FaceObservation[] }
 
 export const INFERENCE_INTERVAL_MS = 500;
 /** Facial animation needs to catch short blinks; object detection remains at 2 Hz. */
@@ -30,7 +31,9 @@ export const FOCUS_TUNING = {
   phoneHoldMs: 2000,
   yawAway: 25,
   pitchUp: -18,
-  pitchDown: 10,
+  pitchDown: 6,
+  /** A phone centred above this height in the frame is being held up (in use), not lying on the desk. */
+  phoneHeldMaxY: 0.7,
   /** Once turned away, the head must come back within this fraction of the threshold to count as back (stops flicker). */
   release: 0.7,
   talkJawStd: 0.06,
@@ -124,7 +127,8 @@ export class FocusClassifier {
     const turned = this.turned;
     const lookingDown = !!pose && pose.pitch > t.pitchDown;
     const sample = (state: CameraEventType, confidence: number): CameraSample => ({ state, confidence, timestamp, ...(pose && { pose }) });
-    if (obs.phone >= t.phoneThreshold && (!face || turned || lookingDown)) this.lastPhone = timestamp;
+    const heldUp = obs.phoneY !== undefined && obs.phoneY < t.phoneHeldMaxY;
+    if (obs.phone >= t.phoneThreshold && (!face || turned || lookingDown || heldUp)) this.lastPhone = timestamp;
     if (timestamp - this.lastPhone <= t.phoneHoldMs) return sample('phone', Math.max(obs.phone, 0.5));
     if (!face && obs.people === 0) { this.turned = false; return sample('away', 0.7); }
     const othersPresent = obs.faces.length > 1 || obs.people > 1;

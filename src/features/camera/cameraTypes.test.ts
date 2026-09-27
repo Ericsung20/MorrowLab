@@ -39,12 +39,19 @@ describe('FocusClassifier', () => {
   });
   it('ignores a phone lying on the desk but catches one being looked at, and holds it through flicker', () => {
     const c = calibrated();
-    expect(c.classify(frame({ phone: 0.8 }), 3000).state).toBe('studying');
+    expect(c.classify(frame({ phone: 0.8, phoneY: 0.9 }), 3000).state).toBe('studying');
     expect(c.classify(frame({ phone: 0.35, faces: [face(5, 30)] }), 3500).state).toBe('phone');
     // Partly visible phone drops out of detection for a moment: still phone.
     expect(c.classify(frame({ phone: 0.05, faces: [face(5, 30)] }), 5000).state).toBe('phone');
     expect(c.classify(frame({ phone: 0, faces: [face(5, 30)] }), 6000).state).toBe('studying');
     expect(c.classify(frame({ phone: 0.4, faces: [] }), 7000).state).toBe('phone');
+  });
+  it('catches a phone held up in front of the face even without looking down', () => {
+    const c = calibrated();
+    expect(c.classify(frame({ phone: 0.5, phoneY: 0.4 }), 3000).state).toBe('phone');
+    // Slight downward glance (6°+) at a phone near the bottom also counts.
+    const d = calibrated();
+    expect(d.classify(frame({ phone: 0.5, phoneY: 0.85, faces: [face(5, 17)] }), 3000).state).toBe('phone');
   });
   it('detects absence and chatting with someone', () => {
     const c = calibrated();

@@ -43,7 +43,14 @@ function observeFaces(models: Models, video: HTMLVideoElement, timestamp: number
 export function observe(models: Models, video: HTMLVideoElement, timestamp: number, faces = observeFaces(models, video, timestamp)): FrameObservation {
   const detections = models.objects.detectForVideo(video, timestamp).detections;
   const best = (name: string) => detections.flatMap(d => d.categories).filter(c => c.categoryName === name).map(c => c.score);
-  return { phone: Math.max(0, ...best('cell phone')), people: best('person').filter(s => s >= PERSON_THRESHOLD).length, faces };
+  // Where the most confident phone sits vertically (0 top, 1 bottom): held up vs lying on the desk.
+  let phone = 0, phoneY: number | undefined;
+  for (const d of detections) for (const c of d.categories) {
+    if (c.categoryName !== 'cell phone' || c.score <= phone) continue;
+    phone = c.score;
+    phoneY = d.boundingBox && video.videoHeight ? (d.boundingBox.originY + d.boundingBox.height / 2) / video.videoHeight : undefined;
+  }
+  return { phone, phoneY, people: best('person').filter(s => s >= PERSON_THRESHOLD).length, faces };
 }
 
 const CAMERA_CONSTRAINTS = { video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false } as const;
