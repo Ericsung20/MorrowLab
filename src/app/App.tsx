@@ -33,7 +33,7 @@ export default function App() {
       <main className="workspace">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/session/:taskId" element={<Session />} />
+          <Route path="/session" element={<Session />} />
           <Route path="/summary/:sessionId" element={<Summary />} />
           <Route path="/tomorrow" element={<Tomorrow />} />
           <Route path="*" element={<Navigate to="/" replace />} />

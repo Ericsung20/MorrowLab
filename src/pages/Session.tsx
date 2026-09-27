@@ -1,6 +1,6 @@
 import { duration } from "../components/format";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Camera,
@@ -8,6 +8,7 @@ import {
   Smartphone,
   UserRound,
   Play,
+  Puzzle,
   Square,
 } from "lucide-react";
 import { dataService, useStudySensors } from "../app/dependencies";
@@ -17,22 +18,25 @@ import type {
   StudySession,
 } from "../contracts/morrowlab";
 import { useLoad } from "../hooks/ui/useLoad";
-import type { StudyActivityMode } from '../contracts/activity';
+import { estimateTaskTime } from "../features/activity/classifyActivity";
 import {
   ActivityList,
   BehaviorTimeline,
   ErrorNotice,
-  Missing,
   Pending,
 } from "../components/Common";
+const loadTasks = async () =>
+  (await dataService.listTasks()).filter((t) => t.status === "todo");
+const STATE_LABELS: Record<string, string> = {
+  studying: "Studying",
+  phone: "On phone",
+  away: "Away",
+  distracted: "Looking elsewhere",
+  talking: "Chatting",
+};
 export default function Session() {
-  const { taskId } = useParams();
-  return <SessionWorkspace key={taskId} taskId={taskId ?? ""} />;
-}
-function SessionWorkspace({ taskId }: { taskId: string }) {
-  const loader = useCallback(() => dataService.getTask(taskId), [taskId]);
-  const { data: task, error, loading } = useLoad(loader);
-  const { state, controller, videoRef, isMock } = useStudySensors();
+  const { data: tasks, error, loading } = useLoad(loadTasks);
+  const { state, controller, videoRef, isMock } = useStudySensors(tasks);
   const navigate = useNavigate();
   const [session, setSession] = useState<StudySession>();
   const [busy, setBusy] = useState(false);
@@ -41,14 +45,16 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
     cameraEvents: CameraEvent[];
     activitySegments: ActivitySegment[];
   }>();
+  const [minutes, setMinutes] = useState<Record<string, number>>({});
+  const [done, setDone] = useState<string[]>([]);
   const [focus, setFocus] = useState(3);
   const [understanding, setUnderstanding] = useState(3);
   const [completion, setCompletion] = useState(75);
   const [note, setNote] = useState("");
   const [elapsed, setElapsed] = useState(0);
-  const [activityMode, setActivityMode] = useState<StudyActivityMode>('strict');
   const timerStart = useRef(0);
   const running = state.status === "running";
+  const currentTab = state.activitySegments.at(-1);
   useEffect(() => {
     if (!session || capture) return;
     const timer = setInterval(
@@ -61,7 +67,7 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
     if (!session) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      e.returnValue = '';
+      e.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
@@ -71,7 +77,7 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
     setActionError("");
     try {
       if (!session) {
-        const created = await dataService.startSession(taskId);
+        const created = await dataService.startSession();
         timerStart.current = Date.now();
         setSession(created);
       }
@@ -91,7 +97,10 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
     setBusy(true);
     setActionError("");
     try {
-      setCapture(await controller.stop());
+      const result = await controller.stop();
+      const estimate = estimateTaskTime(result.activitySegments, result.cameraEvents, tasks ?? []);
+      setMinutes(Object.fromEntries(estimate.map((e) => [e.taskId, Math.round(e.seconds / 60)])));
+      setCapture(result);
     } catch (e) {
       setActionError(
         e instanceof Error
@@ -110,6 +119,8 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
       const saved = await dataService.finishSession(session.id, {
         ...capture,
         reflection: { focus, understanding, completionPct: completion, note },
+        taskBreakdown: Object.entries(minutes).map(([taskId, m]) => ({ taskId, seconds: m * 60 })),
+        completedTaskIds: done,
       });
       navigate(`/summary/${saved.id}`, { replace: true });
     } catch (e) {
@@ -130,7 +141,8 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
         <Link to="/">Back to dashboard</Link>
       </>
     );
-  if (!task) return <Missing title="Task not found" />;
+  const plan = tasks ?? [];
+  const assignedMinutes = Object.values(minutes).reduce((a, b) => a + b, 0);
   return (
     <>
       <Link
@@ -152,17 +164,16 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
       <div className="page-heading">
         <div>
           <div className="eyebrow">
-            {capture ? "A MOMENT TO REFLECT" : "YOUR FOCUS SPACE"} ·{" "}
-            {task.subject}
+            {capture ? "A MOMENT TO REFLECT" : "YOUR FOCUS SPACE"}
           </div>
-          <h1>{task.title}</h1>
+          <h1>Study session</h1>
           <p>
             {capture
               ? "The way it felt matters as much as the time you spent."
-              : "Settle in. One task, one focused moment at a time."}
+              : "Work on anything from your plan. MorrowLab keeps track of what you work on."}
           </p>
         </div>
-        <span className="soft-badge">{task.estimatedMinutes} min planned</span>
+        <span className="soft-badge">{plan.length} tasks on your plan</span>
       </div>
       <ErrorNotice message={actionError || state.error || ""} />
       {capture ? (
@@ -178,6 +189,42 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
               void finish();
             }}
           >
+            {plan.length > 0 && (
+              <fieldset className="task-breakdown">
+                <legend>What did you work on?</legend>
+                <p className="muted">
+                  Estimated from your open tabs and camera. Adjust anything that looks off.
+                  {" "}Session length: {duration(elapsed)} · assigned: {assignedMinutes} min.
+                </p>
+                {plan.map((t) => (
+                  <div className="breakdown-row" key={t.id}>
+                    <span>
+                      <strong>{t.title}</strong>
+                      <small className="muted"> · {t.subject}</small>
+                    </span>
+                    <label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="1440"
+                        aria-label={`Minutes on ${t.title}`}
+                        value={minutes[t.id] ?? 0}
+                        onChange={(e) => setMinutes({ ...minutes, [t.id]: Math.max(0, Number(e.target.value) || 0) })}
+                      />
+                      min
+                    </label>
+                    <label className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={done.includes(t.id)}
+                        onChange={(e) => setDone(e.target.checked ? [...done, t.id] : done.filter((id) => id !== t.id))}
+                      />
+                      Finished
+                    </label>
+                  </div>
+                ))}
+              </fieldset>
+            )}
             {[
               {
                 label: "How focused did you feel?",
@@ -213,7 +260,7 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
               </fieldset>
             ))}
             <label className="slider-label">
-              How much of your goal did you complete?
+              How much of what you planned for this session did you complete?
               <strong>{completion}%</strong>
               <input
                 type="range"
@@ -261,26 +308,15 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
                   <div className="viewfinder">
                     <Camera size={44} strokeWidth={1} />
                   </div>
-                  <h2>
-                    {running
-                      ? "A little space to focus."
-                      : "Your focus starts here."}
-                  </h2>
-                  <p>
-                    {running
-                      ? "Demo monitoring is running."
-                      : "Start monitoring when you’re ready."}
-                    <br />
-                    This demo doesn’t access your camera.
-                  </p>
+                  <h2>Your focus starts here.</h2>
                 </div>
               )}
               <div className="camera-bottom">
                 <div>
                   <span className="eyebrow">CURRENT STATE</span>
-                  <strong className="capitalize">
+                  <strong>
                     {running
-                      ? (state.currentState ?? "Waiting for observations")
+                      ? state.currentState ? STATE_LABELS[state.currentState] : "Calibrating — look at your screen"
                       : state.status === "loading"
                         ? "Loading…"
                         : state.status === 'error' ? 'Camera unavailable · manual tracking active' : "Ready when you are"}
@@ -288,6 +324,13 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
                 </div>
                 {running && state.confidence !== undefined && (
                   <span className="confidence">
+                    {state.headPose && (
+                      <>
+                        Head {Math.round(Math.abs(state.headPose.yaw))}° side ·{" "}
+                        {Math.round(Math.abs(state.headPose.pitch))}° {state.headPose.pitch >= 0 ? "down" : "up"}
+                        {" · "}
+                      </>
+                    )}
                     {Math.round(state.confidence * 100)}% confidence
                   </span>
                 )}
@@ -295,7 +338,7 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
             </div>
             <p className="privacy">
               <ShieldCheck size={16} />
-              Video stays on this device. Only study events are saved.
+              Video stays on this device. Only study events are saved. Looking down at paper or a tablet counts as studying.
             </p>
             <div className="session-controls">
               <button
@@ -363,22 +406,26 @@ function SessionWorkspace({ taskId }: { taskId: string }) {
                 <strong>{state.awayEventCount}</strong>
                 <span>Away events</span>
               </div>
+              <div>
+                <strong>{state.offTaskEventCount}</strong>
+                <span>Off-task events</span>
+              </div>
             </div>
             <h3>Event timeline</h3>
             <BehaviorTimeline events={state.cameraEvents} />
-            {controller.setStudyMode && <label>
-              Screen activity mode
-              <select value={activityMode} onChange={e => {
-                const mode = e.target.value as StudyActivityMode;
-                setActivityMode(mode); controller.setStudyMode?.(mode);
-              }}>
-                <option value="strict">Strict: other tabs count as off-task</option>
-                <option value="research">Research: other tabs count as study</option>
-                <option value="lecture">Lecture: other tabs count as study</option>
-              </select>
-              <span className="muted">Research and lecture are self-reported. Changes apply from now on; switch back when finished.</span>
-            </label>}
-            <h3>Activity timeline</h3>
+            <h3>Screen activity</h3>
+            {session && !state.extensionConnected && !state.companionConnected && (
+              <p className="muted extension-hint">
+                <Puzzle size={14} /> To recognize other tabs and apps as study or distraction, run the desktop companion
+                (<code>npm run companion</code>) and/or install the browser extension (<code>extension/</code>).
+              </p>
+            )}
+            {currentTab && (
+              <p className="muted">
+                Now: <strong>{currentTab.label}</strong>
+                {currentTab.category && <span className={`category ${currentTab.category}`}>{currentTab.category}</span>}
+              </p>
+            )}
             <ActivityList segments={state.activitySegments} />
           </aside>
         </div>
