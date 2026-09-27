@@ -108,7 +108,7 @@ export default function Summary() {
       <div className="equal-grid">
         <section className="panel detail-panel">
           <h2>Your study rhythm</h2>
-          <BehaviorTimeline events={session.cameraEvents} />
+          <BehaviorTimeline events={session.cameraEvents} segments={session.activitySegments} />
         </section>
         <section className="panel detail-panel">
           <h2>What to take forward</h2>

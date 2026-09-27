@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import type { CameraEvent } from "../contracts/morrowlab";
+import type { ActivitySegment, CameraEvent } from "../contracts/morrowlab";
+import { withScreenDistraction } from "../features/sensors/useStudySensors";
 import { duration } from "./format";
 export function ErrorNotice({ message }: { message: string }) {
   return message ? (
@@ -26,7 +27,17 @@ export function Missing({ title }: { title: string }) {
     </div>
   );
 }
-export function BehaviorTimeline({ events }: { events: CameraEvent[] }) {
+const TIMELINE_LABELS: Record<string, string> = {
+  studying: "Studying",
+  phone: "Phone",
+  away: "Away",
+  distracted: "Looking elsewhere",
+  talking: "Chatting",
+  screen: "Screen distraction",
+};
+/** Camera states, with time on distracting sites/apps shown as "Screen distraction". */
+export function BehaviorTimeline({ events: cameraEvents, segments = [] }: { events: CameraEvent[]; segments?: ActivitySegment[] }) {
+  const events = withScreenDistraction(cameraEvents, segments);
   return (
     <>
       <div className="behavior-track" aria-label="Behavior timeline">
@@ -35,31 +46,17 @@ export function BehaviorTimeline({ events }: { events: CameraEvent[] }) {
             key={e.id}
             className={e.type}
             style={{ flexGrow: Math.max(e.durationSec, 0.5) }}
-            title={`${e.type}: ${duration(e.durationSec)}`}
+            title={`${TIMELINE_LABELS[e.type]}: ${duration(e.durationSec)}`}
           />
         ))}
       </div>
       <div className="legend">
-        <span>
-          <i className="studying" />
-          Studying
-        </span>
-        <span>
-          <i className="phone" />
-          Phone
-        </span>
-        <span>
-          <i className="away" />
-          Away
-        </span>
-        <span>
-          <i className="distracted" />
-          Looking elsewhere
-        </span>
-        <span>
-          <i className="talking" />
-          Chatting
-        </span>
+        {Object.entries(TIMELINE_LABELS).map(([type, label]) => (
+          <span key={type}>
+            <i className={type} />
+            {label}
+          </span>
+        ))}
       </div>
       {!events.length && (
         <p className="muted">Events will appear when monitoring starts.</p>
@@ -67,7 +64,7 @@ export function BehaviorTimeline({ events }: { events: CameraEvent[] }) {
       <div className="event-list">
         {events.slice(-6).map((e) => (
           <div key={e.id}>
-            <span className="capitalize">{e.type}</span>
+            <span>{TIMELINE_LABELS[e.type]}</span>
             <span>{duration(e.durationSec)}</span>
           </div>
         ))}

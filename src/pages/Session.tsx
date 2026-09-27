@@ -314,7 +314,9 @@ export default function Session() {
                   <span className="eyebrow">CURRENT STATE</span>
                   <strong>
                     {running
-                      ? state.currentState ? STATE_LABELS[state.currentState] : "Calibrating — look at your screen"
+                      ? state.screenDistracted
+                        ? "Screen distraction"
+                        : state.currentState ? STATE_LABELS[state.currentState] : "Calibrating — look at your screen"
                       : state.status === "loading"
                         ? "Loading…"
                         : state.status === 'error' ? 'Camera unavailable · manual tracking active' : "Ready when you are"}
@@ -410,7 +412,7 @@ export default function Session() {
               </div>
             </div>
             <h3>Event timeline</h3>
-            <BehaviorTimeline events={state.cameraEvents} />
+            <BehaviorTimeline events={state.cameraEvents} segments={state.activitySegments} />
             {session && !state.extensionConnected && !state.companionConnected && (
               <p className="muted extension-hint">
                 <Puzzle size={14} /> To recognize other tabs and apps as study or distraction, run the desktop companion

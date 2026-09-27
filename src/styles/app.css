@@ -728,6 +728,9 @@ textarea::placeholder {
 .talking {
   background: #c9a3c4;
 }
+.screen {
+  background: #e07a7a;
+}
 .mini-metrics {
   flex-wrap: wrap;
   gap: 12px;
@@ -767,13 +770,15 @@ textarea::placeholder {
 }
 .legend {
   display: flex;
-  gap: 17px;
+  flex-wrap: wrap;
+  gap: 8px 17px;
   margin: 13px 0;
   font-size: 9px;
   color: #8a9680;
 }
 .legend span {
   display: flex;
+  white-space: nowrap;
   gap: 5px;
   align-items: center;
 }
