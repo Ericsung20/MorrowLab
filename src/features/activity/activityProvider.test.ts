@@ -100,3 +100,34 @@ it('stops retrying quietly when the companion is not running', () => {
   p.stop();
   vi.unstubAllGlobals();
 });
+
+it('lets the local AI decide titles the rules cannot, updating the current interval', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(1000);
+  vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  let answer!: (category: 'study') => void;
+  const known = new Map<string, 'study'>();
+  const ai = {
+    cached: (text: string) => known.get(text),
+    classify: vi.fn((text: string) => new Promise<'study'>(resolve => { answer = c => { known.set(text, c); resolve(c); }; })),
+  };
+  const p = new BrowserActivityProvider([], ai); p.start();
+  const report = (title: string) => window.dispatchEvent(new MessageEvent('message', {
+    data: { type: EXTENSION_TAB_MESSAGE, tab: { title, url: 'https://www.youtube.com/watch?v=1' } }, source: window }));
+  report('우주는 얼마나 클까? - YouTube');
+  vi.advanceTimersByTime(1000);
+  // Rules alone: YouTube with no clues is a distraction, and the title (without " - YouTube") goes to the AI.
+  expect(p.getSegments().at(-1)?.category).toBe('distraction');
+  expect(ai.classify).toHaveBeenCalledWith('우주는 얼마나 클까?');
+  vi.advanceTimersByTime(2000);
+  answer('study'); await Promise.resolve(); await Promise.resolve();
+  const [segment] = p.getSegments().filter(s => s.label.startsWith('우주'));
+  expect(segment).toMatchObject({ category: 'study', durationSec: 3 });
+  expect(segment).not.toHaveProperty('ask');
+  // Same title later: answered from memory, no second AI call.
+  report('NewJeans Official MV - YouTube'); report('우주는 얼마나 클까? - YouTube');
+  vi.advanceTimersByTime(1000);
+  expect(p.getSegments().at(-1)?.category).toBe('study');
+  expect(ai.classify).toHaveBeenCalledTimes(1);
+  p.stop();
+});
