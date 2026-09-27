@@ -38,7 +38,8 @@ export function createDemoWorkspace(now = new Date()): { tasks: StudyTask[]; ses
         endISO: new Date(cursor + seconds * 1000).toISOString(), durationSec: seconds, confidence: 0.92, source: 'model' })
       cursor += seconds * 1000
     }
-    const session: StudySession = { id: crypto.randomUUID(), taskId: task.id, taskTitle: task.title, subject: task.subject,
+    const session: StudySession = { id: crypto.randomUUID(), subject: task.subject,
+      taskBreakdown: [{ taskId: task.id, taskTitle: task.title, subject: task.subject, seconds: durationSec - spec.phone - spec.away }],
       startedAtISO: start.toISOString(), endedAtISO: end.toISOString(), durationSec, cameraEvents,
       activitySegments: [{ id: crypto.randomUUID(), label: `${task.subject} study materials`, startISO: start.toISOString(), endISO: end.toISOString(), durationSec, source: 'demo' }],
       reflection: { focus: spec.focus, understanding: spec.understanding, completionPct: spec.completion }, isDemoHistory: true }

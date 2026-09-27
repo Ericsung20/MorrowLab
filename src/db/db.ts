@@ -15,6 +15,13 @@ export class MorrowLabDB extends Dexie {
       sessions: '&id, taskId, subject, startedAtISO, isDemoHistory',
       settings: '&key',
     })
+    // v2: sessions cover all tasks; the old single task becomes a one-entry breakdown.
+    this.version(2).stores({ sessions: '&id, subject, startedAtISO, isDemoHistory' }).upgrade(tx =>
+      tx.table('sessions').toCollection().modify((s: StudySession & { taskId?: string; taskTitle?: string }) => {
+        s.taskBreakdown ??= s.taskId ? [{ taskId: s.taskId, taskTitle: s.taskTitle ?? '', subject: s.subject, seconds: s.durationSec }] : []
+        delete s.taskId
+        delete s.taskTitle
+      }))
   }
 }
 

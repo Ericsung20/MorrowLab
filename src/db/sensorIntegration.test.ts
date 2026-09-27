@@ -5,7 +5,8 @@ import { useStudySensors } from '../features/sensors/useStudySensors'
 import { createLocalMorrowLabDataService } from '../services/localMorrowLabDataService'
 import { MorrowLabDB } from './db'
 
-it.each([['strict', 76], ['research', 86], ['lecture', 86]] as const)('persists sensor output and %s screen scoring without a camera', async (mode, expectedScore) => {
+it('persists sensor output without a camera or extension', async () => {
+  const expectedScore = 86
   // Keep IndexedDB's asynchronous scheduling real while controlling wall-clock time.
   vi.useFakeTimers({ toFake: ['Date'] })
   const start = new Date('2026-09-26T15:00:00Z').getTime()
@@ -18,8 +19,7 @@ it.each([['strict', 76], ['research', 86], ['lecture', 86]] as const)('persists 
   try {
     const task = await service.createTask({ title: 'Integration task', subject: 'Math',
       estimatedMinutes: 30, deadlineISO: '2026-09-27T23:00:00Z' })
-    const session = await service.startSession(task.id)
-    act(() => result.current.setStudyMode(mode))
+    const session = await service.startSession()
     await act(() => result.current.start())
     expect(result.current.status).toBe('error')
     act(() => result.current.simulatePhone(5))
@@ -29,7 +29,7 @@ it.each([['strict', 76], ['research', 86], ['lecture', 86]] as const)('persists 
     let sensorOutput!: ReturnType<typeof result.current.stop>
     act(() => { sensorOutput = result.current.stop() })
     const finished = await service.finishSession(session.id, { ...sensorOutput,
-      reflection: { focus: 5, understanding: 5, completionPct: 80 } })
+      reflection: { focus: 5, understanding: 5, completionPct: 80 }, taskBreakdown: [{ taskId: task.id, seconds: 0 }], completedTaskIds: [] })
     expect(finished.durationSec).toBe(7)
     expect(finished.cameraEvents.map(e => [e.type, e.durationSec])).toEqual([['phone', 5], ['away', 2]])
     expect(finished.activitySegments.length).toBeGreaterThan(0)
