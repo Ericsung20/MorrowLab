@@ -49,6 +49,16 @@ describe('classifyWindow (desktop companion)', () => {
     expect(classifyWindow({ title: 'Calculus notes.pdf', app: 'Some Viewer viewer.exe' }, tasks)).toEqual({ category: 'study', taskId: 'calc' })
     expect(classifyWindow({ title: 'Settings', app: 'Settings' }).category).toBe('neutral')
   })
+  it('recognizes browser and desktop games, including unlisted ones by title', () => {
+    expect(chrome('TETR.IO').category).toBe('distraction')
+    expect(classifyWindow({ title: 'TETR.IO', app: 'TETR.IO TETR.IO.exe' }).category).toBe('distraction')
+    expect(classifyActivity({ title: 'TETR.IO', url: 'https://tetr.io/' }).category).toBe('distraction')
+    expect(chrome('Play Chess Online - Chess.com').category).toBe('distraction')
+    expect(chrome('Super Fun Puzzle Game').category).toBe('distraction')
+    expect(classifyWindow({ title: '신작 게임', app: 'Unknown Launcher launcher.exe' }).category).toBe('distraction')
+    // Study words outweigh: still not a distraction.
+    expect(chrome('Game theory lecture notes').category).toBe('neutral')
+  })
 })
 
 describe('estimateTaskTime', () => {

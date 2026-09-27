@@ -1,7 +1,14 @@
 import type { ActivityCategory, ActivitySegment, CameraEvent, StudyTask } from '../../contracts/morrowlab'
 
 // ponytail: static lists + keyword heuristics, fully local. Swap for an LLM classifier if titles prove too ambiguous.
+/** Browser games: [name as it appears in titles, host]. */
+const WEB_GAMES: [string, string][] = [
+  ['tetr.io', 'tetr.io'], ['jstris', 'jstris.jezevec10.com'], ['chess.com', 'chess.com'], ['lichess', 'lichess.org'],
+  ['agar.io', 'agar.io'], ['slither.io', 'slither.io'], ['krunker', 'krunker.io'], ['skribbl', 'skribbl.io'],
+  ['gartic', 'gartic.io'], ['geoguessr', 'geoguessr.com'], ['poki', 'poki.com'], ['crazygames', 'crazygames.com'],
+]
 const DISTRACTION_HOSTS = [
+  ...WEB_GAMES.map(([, host]) => host),
   'netflix.com', 'disneyplus.com', 'primevideo.com', 'tving.com', 'wavve.com', 'coupangplay.com', 'watcha.com', 'laftel.net',
   'twitch.tv', 'chzzk.naver.com', 'afreecatv.com', 'sooplive.co.kr', 'kick.com',
   'webtoons.com', 'comic.naver.com', 'webtoon.kakao.com', 'page.kakao.com', 'kakaopage.com', 'lezhin.com', 'toomics.com',
@@ -24,10 +31,12 @@ const STUDY_WORDS = [
   'crash course', 'khan academy', 'opencourseware', 'theorem', 'proof', 'chapter',
   '강의', '강좌', '인강', '수업', '개념', '풀이', '문제', '기출', '수능', '내신', '공부', '수학', '미적분', '과학', '물리', '화학', '생명',
   '지구과학', '영어', '국어', '한국사', '사회', '경제', '코딩', '프로그래밍', '알고리즘', '토익', '토플', '문법', '해설', '시험', '정리',
+  '미분', '적분', '역사', '논문', '원리', '법칙',
 ]
 const PLAY_WORDS = [
   'music video', 'official video', 'official mv', 'm/v', 'vlog', 'prank', 'highlights', 'gameplay', "let's play", 'reaction',
   'funny', 'meme', 'trailer', 'challenge', 'asmr', 'mukbang', 'unboxing', 'minecraft', 'fortnite', 'league of legends', '#shorts',
+  'game', 'games', 'play now', 'multiplayer',
   '먹방', '브이로그', '예능', '하이라이트', '게임', '리액션', '웃긴', '직캠', '뮤비', '드라마', '몰아보기', '썰', '쇼츠', '롤 ', '배그',
 ]
 const TASK_STOPWORDS = new Set(['the', 'and', 'for', 'with', 'homework', 'reading', 'study', 'project', 'review', 'chapter', 'task', '과제', '공부', '숙제'])
@@ -57,37 +66,48 @@ export function hostOf(url: string | undefined) {
   try { return url ? new URL(url).hostname.replace(/^www\.|^m\./, '') : '' } catch { return '' }
 }
 
+/** `ask`: the rules found no evidence either way; this text may be judged by the local AI (aiClassifier.ts). */
+export interface Classification { category: ActivityCategory; taskId?: string; ask?: string }
+
 /** Decides whether a tab is study, distraction, or unknown (neutral) from its title and URL. */
-export function classifyActivity(tab: { title: string; url?: string }, tasks: StudyTask[] = []): { category: ActivityCategory; taskId?: string } {
+export function classifyActivity(tab: { title: string; url?: string }, tasks: StudyTask[] = []): Classification {
   const host = hostOf(tab.url)
   const title = tab.title.toLowerCase()
   const taskId = matchTask(tab.title, tasks)
   if (host === 'youtube.com' || host === 'youtu.be') {
     if (tab.url?.includes('/shorts/')) return { category: 'distraction' }
-    const score = countHits(title, STUDY_WORDS) + (taskId ? 2 : 0) - countHits(title, PLAY_WORDS)
+    const study = countHits(title, STUDY_WORDS), play = countHits(title, PLAY_WORDS)
+    const score = study + (taskId ? 2 : 0) - play
     // YouTube is entertainment by default; a video must look academic to count as study.
-    return score > 0 ? { category: 'study', taskId } : { category: 'distraction' }
+    if (score > 0) return { category: 'study', taskId }
+    return !study && !play ? { category: 'distraction', ask: tab.title.replace(/\s[-–—]\s*youtube\s*$/i, '') } : { category: 'distraction' }
   }
   if (matchesHost(host, DISTRACTION_HOSTS)) return { category: 'distraction' }
   if (taskId || matchesHost(host, STUDY_HOSTS) || /\.pdf($|[?#])/i.test(tab.url ?? '')) return { category: 'study', taskId }
-  return { category: 'neutral' }
+  return looksLikePlay(title) ? { category: 'distraction' } : { category: 'neutral', ask: tab.title }
 }
+
+/** Guard for the AI: a title with study words is never judged a distraction. */
+export const hasStudyWords = (text: string) => countHits(text.toLowerCase(), STUDY_WORDS) > 0
+
+/** Unlisted page/app whose title reads more like play ("… game", "게임") than study. */
+const looksLikePlay = (title: string) => countHits(title, PLAY_WORDS) > countHits(title, STUDY_WORDS)
 
 const BROWSER_APPS = ['chrome', 'msedge', 'edge', 'whale', 'brave', 'opera', 'firefox', 'safari', 'arc', 'vivaldi']
 /** Site names as they appear in browser window titles, when no URL is available. */
 const TITLE_SITES: [string, string][] = [
-  ['youtube', 'youtube.com'], ['netflix', 'netflix.com'], ['disney+', 'disneyplus.com'], ['twitch', 'twitch.tv'], ['치지직', 'chzzk.naver.com'],
+  ...WEB_GAMES, ['youtube', 'youtube.com'], ['netflix', 'netflix.com'], ['disney+', 'disneyplus.com'], ['twitch', 'twitch.tv'], ['치지직', 'chzzk.naver.com'],
   ['네이버 웹툰', 'comic.naver.com'], ['webtoon', 'webtoons.com'], ['카카오페이지', 'page.kakao.com'], ['instagram', 'instagram.com'],
   ['facebook', 'facebook.com'], ['tiktok', 'tiktok.com'], ['reddit', 'reddit.com'], ['google docs', 'docs.google.com'],
   ['google 문서', 'docs.google.com'], ['notion', 'notion.so'], ['wikipedia', 'wikipedia.org'], ['khan academy', 'khanacademy.org'],
 ]
 const DISTRACTION_APPS = ['kakaotalk', 'discord', 'telegram', 'whatsapp', 'steam', 'league of legends', 'riot client', 'battle.net',
-  'minecraft', 'roblox', 'valorant', 'overwatch', 'maplestory', 'netflix', 'tiktok', 'instagram']
+  'minecraft', 'roblox', 'valorant', 'overwatch', 'maplestory', 'tetr.io', 'tetrio', 'netflix', 'tiktok', 'instagram']
 const STUDY_APPS = ['word', 'winword', 'powerpoint', 'powerpnt', 'excel', 'onenote', 'notion', 'obsidian', 'acrobat', 'pdf',
   'visual studio code', 'code', 'pycharm', 'intellij', 'matlab', 'rstudio', 'goodnotes', 'notability', 'zotero', 'anki', 'hwp', '한글', 'xcode']
 
 /** Classifies the foreground window reported by the desktop companion ({ title, app }, url on macOS only). */
-export function classifyWindow(win: { title: string; app: string; url?: string }, tasks: StudyTask[] = []): { category: ActivityCategory; taskId?: string } {
+export function classifyWindow(win: { title: string; app: string; url?: string }, tasks: StudyTask[] = []): Classification {
   const app = win.app.toLowerCase()
   if (countHits(app, BROWSER_APPS)) {
     // "Video title - YouTube - Google Chrome" → drop the browser suffix, infer the site from the title.
@@ -98,7 +118,7 @@ export function classifyWindow(win: { title: string; app: string; url?: string }
   if (countHits(app, DISTRACTION_APPS)) return { category: 'distraction' }
   const taskId = matchTask(win.title, tasks)
   if (taskId || countHits(app, STUDY_APPS)) return { category: 'study', taskId }
-  return { category: 'neutral' }
+  return looksLikePlay(win.title.toLowerCase()) ? { category: 'distraction' } : { category: 'neutral', ask: win.title }
 }
 
 /**
