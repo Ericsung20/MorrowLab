@@ -13,6 +13,7 @@
     "companion": "node --no-deprecation companion/server.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.0",
     "@mediapipe/tasks-vision": "1.0.1",
     "date-fns": "^4.4.0",
     "dexie": "^4.4.6",

@@ -1,6 +1,7 @@
 import type { ActivitySegment, StudyTask } from '../../contracts/morrowlab';
 import { ACTIVITY_LABELS } from '../../contracts/activity';
-import { classifyActivity, classifyWindow, hostOf } from './classifyActivity';
+import { classifyActivity, classifyWindow, hostOf, type Classification } from './classifyActivity';
+import { sharedAiClassifier, type AiClassifier } from './aiClassifier';
 
 export interface ActivityProvider {
   start(): void;
@@ -31,6 +32,10 @@ export class ActivityTimeline {
     const a = this.active;
     return a && now > a.start ? { id: a.id, label: a.label, ...a.meta, startISO: new Date(a.start).toISOString(), endISO: new Date(now).toISOString(), durationSec: (now - a.start) / 1000, source: this.source } : null;
   }
+  /** A late answer (e.g. from the AI) for the interval still in progress; earlier intervals are left as recorded. */
+  recategorize(label: string, category: SegmentMeta['category']) {
+    if (this.active?.label === label) this.active.meta = { ...this.active.meta, category };
+  }
   private close(now: number) { const segment = this.current(now); if (segment) this.segments.push(segment); this.active = null; }
   getSegments() { const current = this.current(this.now()); return [...this.segments, ...(current ? [current] : [])].map(s => ({ ...s })); }
   stop() { this.close(this.now()); return this.getSegments(); }
@@ -60,7 +65,8 @@ export class BrowserActivityProvider implements ActivityProvider {
   private companion: EventSource | null = null;
   private companionRetry: ReturnType<typeof setTimeout> | null = null;
   private readonly tasks: StudyTask[];
-  constructor(tasks: StudyTask[] = []) { this.tasks = tasks; }
+  private readonly ai: AiClassifier | null;
+  constructor(tasks: StudyTask[] = [], ai: AiClassifier | null = sharedAiClassifier()) { this.tasks = tasks; this.ai = ai; }
   get extensionConnected() { return this.tab !== undefined; }
   get companionConnected() { return !!this.window; }
   private update = () => {
@@ -84,15 +90,25 @@ export class BrowserActivityProvider implements ActivityProvider {
       return this.timeline.transition(ACTIVITY_LABELS.active, { category: 'study' });
     if (tab) {
       const host = hostOf(tab.url) || undefined;
-      return this.timeline.transition(tab.title.slice(0, 200) || host || 'Untitled tab', { host, ...classifyActivity(tab, this.tasks) });
+      return this.record(tab.title.slice(0, 200) || host || 'Untitled tab', host, classifyActivity(tab, this.tasks));
     }
     if (win) {
-      const label = `${win.title || win.app}`.slice(0, 200);
-      return this.timeline.transition(label, { host: hostOf(win.url) || undefined, ...classifyWindow(win, this.tasks) });
+      return this.record(`${win.title || win.app}`.slice(0, 200), hostOf(win.url) || undefined, classifyWindow(win, this.tasks));
     }
     if (tab === null) return this.timeline.transition(ACTIVITY_LABELS.outside, { category: 'neutral' });
     this.timeline.transition(ACTIVITY_LABELS.other, { category: 'neutral' });
   };
+  /** Rules first; titles the rules can't decide go to the local AI, whose answer updates the current interval. */
+  private record(label: string, host: string | undefined, rule: Classification) {
+    const known = rule.ask ? this.ai?.cached(rule.ask) : undefined;
+    const category = known && known !== 'neutral' ? known : rule.category;
+    this.timeline.transition(label, { host, category, taskId: rule.taskId, studyOverride: rule.studyOverride });
+    if (rule.ask && known === undefined && this.ai) {
+      void this.ai.classify(rule.ask).then(answer => {
+        if (this.running && answer !== 'neutral') this.timeline.recategorize(label, answer);
+      });
+    }
+  }
   private connectCompanion() {
     if (typeof EventSource === 'undefined') return;
     const source = new EventSource(COMPANION_URL);
