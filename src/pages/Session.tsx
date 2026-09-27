@@ -1,3 +1,5 @@
+import { CompanionSetup } from "../components/CompanionSetup";
+import { HeadPose } from "../components/HeadPose";
 import { duration } from "../components/format";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -8,7 +10,6 @@ import {
   Smartphone,
   UserRound,
   Play,
-  Puzzle,
   Square,
 } from "lucide-react";
 import { dataService, useStudySensors } from "../app/dependencies";
@@ -21,6 +22,7 @@ import { useLoad } from "../hooks/ui/useLoad";
 import { estimateTaskTime } from "../features/activity/classifyActivity";
 import {
   BehaviorTimeline,
+  SessionHighlights,
   ErrorNotice,
   Pending,
 } from "../components/Common";
@@ -41,6 +43,7 @@ export default function Session() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [capture, setCapture] = useState<{
+    endedAtISO: string;
     cameraEvents: CameraEvent[];
     activitySegments: ActivitySegment[];
   }>();
@@ -98,7 +101,8 @@ export default function Session() {
       const result = await controller.stop();
       const estimate = estimateTaskTime(result.activitySegments, result.cameraEvents, tasks ?? []);
       setMinutes(Object.fromEntries(estimate.map((e) => [e.taskId, Math.round(e.seconds / 60)])));
-      setCapture(result);
+      setElapsed((Date.now() - timerStart.current) / 1000);
+      setCapture({ ...result, endedAtISO: new Date().toISOString() });
     } catch (e) {
       setActionError(
         e instanceof Error
@@ -176,6 +180,7 @@ export default function Session() {
       <ErrorNotice message={actionError || state.error || ""} />
       {capture ? (
         <section className="panel reflection">
+          <SessionHighlights events={capture.cameraEvents} segments={capture.activitySegments} elapsed={elapsed} />
           <span className="eyebrow">SESSION REFLECTION</span>
           <h2>How did it go?</h2>
           <p className="muted">
@@ -309,6 +314,9 @@ export default function Session() {
                   <h2>Your focus starts here.</h2>
                 </div>
               )}
+              <div className="camera-mascot">
+                <HeadPose pose={running ? state.headPose ?? null : null} />
+              </div>
               <div className="camera-bottom">
                 <div>
                   <span className="eyebrow">CURRENT STATE</span>
@@ -316,24 +324,20 @@ export default function Session() {
                     {running
                       ? state.screenDistracted
                         ? "Screen distraction"
+                        : state.currentState === "studying" && !isMock && state.activitySegments.at(-1)?.category === "neutral" ? "Facing screen · activity unknown"
                         : state.currentState ? STATE_LABELS[state.currentState] : "Calibrating — look at your screen"
                       : state.status === "loading"
-                        ? "Loading…"
+                        ? session ? "Connecting camera…" : "Loading…"
                         : state.status === 'error' ? 'Camera unavailable · manual tracking active' : "Ready when you are"}
                   </strong>
                 </div>
-                {running && state.confidence !== undefined && (
-                  <span className="confidence">
-                    {state.headPose && (
-                      <>
-                        Head {Math.round(Math.abs(state.headPose.yaw))}° side ·{" "}
-                        {Math.round(Math.abs(state.headPose.pitch))}° {state.headPose.pitch >= 0 ? "down" : "up"}
-                        {" · "}
-                      </>
-                    )}
-                    {Math.round(state.confidence * 100)}% confidence
-                  </span>
-                )}
+                <div className="camera-companion">
+                  {running && state.confidence !== undefined && (
+                    <span className="confidence">
+                      {Math.round(state.confidence * 100)}% confidence
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <p className="privacy">
@@ -413,12 +417,7 @@ export default function Session() {
             </div>
             <h3>Event timeline</h3>
             <BehaviorTimeline events={state.cameraEvents} segments={state.activitySegments} />
-            {session && !state.extensionConnected && !state.companionConnected && (
-              <p className="muted extension-hint">
-                <Puzzle size={14} /> To recognize other tabs and apps as study or distraction, run the desktop companion
-                (<code>npm run companion</code>) and/or install the browser extension (<code>extension/</code>).
-              </p>
-            )}
+            {!isMock && <CompanionSetup />}
           </aside>
         </div>
       )}

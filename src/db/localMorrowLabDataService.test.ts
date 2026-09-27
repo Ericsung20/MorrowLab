@@ -59,6 +59,14 @@ describe('Dexie local data service', () => {
     expect((await service.getTomorrowRecommendations()).map(r => r.taskId)).toEqual([other.id])
     await expect(service.finishSession(started.id, { ...none, reflection: { focus: 1, understanding: 1, completionPct: 0 } })).rejects.toThrow('already')
   })
+  it('keeps the stop time when reflection is saved later', async () => {
+    const session = await service.startSession()
+    const endedAtISO = new Date(clock.getTime() + 60_000).toISOString()
+    clock = new Date(clock.getTime() + 180_000)
+    const finished = await service.finishSession(session.id, { ...none, endedAtISO, reflection: { focus: 3, understanding: 3, completionPct: 75 } })
+    expect(finished.durationSec).toBe(60)
+    expect(finished.endedAtISO).toBe(endedAtISO)
+  })
   it('rejects invalid reflections, unknown tasks and negative times without finishing the session', async () => {
     const session = await service.startSession()
     await expect(service.finishSession(session.id, { ...none, reflection: { focus: 6, understanding: 5, completionPct: 0 } })).rejects.toThrow('Focus')

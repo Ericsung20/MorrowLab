@@ -50,7 +50,10 @@ export function createLocalMorrowLabDataService(database: MorrowLabDB = db, now:
         const session = await database.sessions.get(sessionId)
         if (!session) throw new Error(`Session "${sessionId}" was not found.`)
         if (session.endedAtISO) throw new Error(`Session "${sessionId}" has already been completed.`)
-        const endedAtISO = now().toISOString()
+        const endedAtISO = input.endedAtISO ?? now().toISOString()
+        if (!Number.isFinite(Date.parse(endedAtISO)) || Date.parse(endedAtISO) < Date.parse(session.startedAtISO) || Date.parse(endedAtISO) > now().getTime()) {
+          throw new Error('Session stop time must fall between its start and now.')
+        }
         const taskBreakdown: TaskTime[] = []
         for (const entry of input.taskBreakdown.filter(e => e.seconds > 0)) {
           const task = await database.tasks.get(entry.taskId)

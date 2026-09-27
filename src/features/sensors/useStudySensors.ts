@@ -1,3 +1,4 @@
+import type { HeadTracking } from '../../contracts/faceTracking';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { ActivitySegment, CameraEvent, CameraEventType, StudyTask } from '../../contracts/morrowlab';
@@ -27,36 +28,33 @@ interface Snapshot extends SensorResult {
   screenDistracted: boolean;
   error: string | null;
   /** Live head angle (degrees) relative to the calibrated screen pose, for display/tuning. */
-  headPose: { yaw: number; pitch: number } | null;
+  headPose: HeadTracking | null;
 }
 const initial: Snapshot = { headPose: null, status: 'idle', modelStatus: 'idle', currentState: null, confidence: 0, elapsedSeconds: 0, studySeconds: 0, phoneEventCount: 0, awayEventCount: 0, offTaskEventCount: 0, extensionConnected: false, companionConnected: false, screenDistracted: false, cameraEvents: [], activitySegments: [], error: null };
 
 export type TimelineEvent = Omit<CameraEvent, 'type'> & { type: CameraEventType | 'screen' };
-/**
- * For display: splits camera "studying" time wherever a distracting site/app was in front into 'screen'
- * (facing the camera while on Instagram isn't study). Other camera states (phone, away…) take precedence.
- */
+/** Partition observed time once, with playlist study taking priority over camera and screen states. */
 export function withScreenDistraction(events: CameraEvent[], segments: ActivitySegment[]): TimelineEvent[] {
-  const distracting = segments.filter(s => s.category === 'distraction')
-    .map(s => [Date.parse(s.startISO), Date.parse(s.endISO)] as const).sort((a, b) => a[0] - b[0]);
-  return events.flatMap(e => {
-    if (e.type !== 'studying') return [e];
-    const end = Date.parse(e.endISO);
-    const pieces: TimelineEvent[] = [];
-    const piece = (type: TimelineEvent['type'], from: number, to: number) => {
-      if (to > from) pieces.push({ ...e, id: `${e.id}-${pieces.length}`, type, startISO: new Date(from).toISOString(), endISO: new Date(to).toISOString(), durationSec: (to - from) / 1000 });
-    };
-    let cursor = Date.parse(e.startISO);
-    for (const [a, b] of distracting) {
-      const from = Math.max(a, cursor), to = Math.min(b, end);
-      if (to <= from) continue;
-      piece('studying', cursor, from);
-      piece('screen', from, to);
-      cursor = to;
+  const overrides = segments.filter(s => s.studyOverride);
+  const boundaries = [...new Set([...events, ...segments].flatMap(e => [Date.parse(e.startISO), Date.parse(e.endISO)]))]
+    .filter(Number.isFinite).sort((a, b) => a - b);
+  const result: TimelineEvent[] = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const from = boundaries[i], to = boundaries[i + 1];
+    const covers = (e: CameraEvent | ActivitySegment) => Date.parse(e.startISO) <= from && Date.parse(e.endISO) >= to;
+    const camera = events.find(covers);
+    const playlist = overrides.find(covers);
+    if (!camera && !playlist) continue;
+    const type = playlist ? 'studying' : camera!.type === 'studying' && segments.some(s => s.category === 'distraction' && covers(s)) ? 'screen' : camera!.type;
+    const previous = result.at(-1);
+    if (previous?.type === type && Date.parse(previous.endISO) === from) {
+      previous.endISO = new Date(to).toISOString();
+      previous.durationSec += (to - from) / 1000;
+    } else {
+      result.push({ id: `timeline-${from}`, type, startISO: new Date(from).toISOString(), endISO: new Date(to).toISOString(), durationSec: (to - from) / 1000, confidence: camera?.confidence ?? 1, source: camera?.source ?? 'model' });
     }
-    piece('studying', cursor, end);
-    return pieces;
-  });
+  }
+  return result;
 }
 export const studySecondsOnTask = (events: CameraEvent[], segments: ActivitySegment[]) =>
   withScreenDistraction(events, segments).filter(e => e.type === 'studying').reduce((sum, e) => sum + e.durationSec, 0);
@@ -66,7 +64,7 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
   const runtime = useRef<{
     running: boolean; started: number; ended: number; status: Status; modelStatus: ModelStatus; error: string | null;
     events: CameraEvent[]; smoother: EventSmoother; provider: ActivityProvider | null; engine: CameraEngine | null;
-    timer: ReturnType<typeof setInterval> | null; manual: CameraEvent | null; pose: { yaw: number; pitch: number } | null;
+    timer: ReturnType<typeof setInterval> | null; manual: CameraEvent | null; pose: HeadTracking | null;
   }>({ running: false, started: 0, ended: 0, status: 'idle', modelStatus: 'idle', error: null, events: [], smoother: new EventSmoother(REQUIRED_SAMPLES), provider: null, engine: null, timer: null, manual: null, pose: null });
   const mounted = useRef(true);
   const tasks = useRef(options.tasks);
@@ -90,7 +88,7 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
     const events = [...r.events, ...(active ? [active] : [])];
     const segments = r.provider?.getSegments() ?? [];
     const studySeconds = studySecondsOnTask(events, segments);
-    setSnapshot({ screenDistracted: r.running && segments.at(-1)?.category === 'distraction', headPose: r.running ? r.pose : null, status: r.status, modelStatus: r.modelStatus, error: r.error, currentState: r.running ? (r.manual?.type ?? r.smoother.currentState) : null, confidence: r.running ? (r.manual?.confidence ?? r.smoother.confidence) : 0, elapsedSeconds: r.started ? Math.floor((now - r.started) / 1000) : 0, studySeconds, phoneEventCount: events.filter(e => e.type === 'phone').length, awayEventCount: events.filter(e => e.type === 'away').length, offTaskEventCount: events.filter(e => e.type === 'distracted' || e.type === 'talking').length, extensionConnected: !!r.provider?.extensionConnected, companionConnected: !!r.provider?.companionConnected, cameraEvents: events, activitySegments: segments });
+    setSnapshot({ screenDistracted: r.running && !segments.at(-1)?.studyOverride && segments.at(-1)?.category === 'distraction', headPose: r.running ? r.pose : null, status: r.status, modelStatus: r.modelStatus, error: r.error, currentState: r.running ? (segments.at(-1)?.studyOverride ? 'studying' : r.manual?.type ?? r.smoother.currentState) : null, confidence: r.running ? (r.manual?.confidence ?? r.smoother.confidence) : 0, elapsedSeconds: r.started ? Math.floor((now - r.started) / 1000) : 0, studySeconds, phoneEventCount: events.filter(e => e.type === 'phone').length, awayEventCount: events.filter(e => e.type === 'away').length, offTaskEventCount: events.filter(e => e.type === 'distracted' || e.type === 'talking').length, extensionConnected: !!r.provider?.extensionConnected, companionConnected: !!r.provider?.companionConnected, cameraEvents: events, activitySegments: segments });
   }, [finishManual]);
 
   const stop = useCallback((): SensorResult => {
@@ -129,6 +127,18 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
     r.provider.start();
     r.timer = setInterval(publish, 1000);
     const engine = new CameraEngine({
+      onPose(pose) {
+        if (!r.running || r.engine !== engine || !mounted.current) return;
+        r.pose = pose;
+        // Animation updates only the transient face, not the timeline or stored events.
+        setSnapshot(previous => ({ ...previous, headPose: pose }));
+      },
+      onInterrupted(lastFrameAt) {
+        if (!r.running || r.engine !== engine) return;
+        r.events.push(...r.smoother.flush(lastFrameAt));
+        r.pose = null;
+        publish();
+      },
       onSample(sample) {
         if (r.running && r.engine === engine) r.pose = sample.pose ?? null;
         if (!r.running || r.engine !== engine) return;
@@ -136,7 +146,7 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
         if (!r.manual) r.events.push(...r.smoother.push(sample));
         publish();
       },
-      onStatus(status) { if (r.running && r.engine === engine) { r.modelStatus = status; if (status === 'ready') r.status = 'running'; publish(); } },
+      onStatus(status) { if (r.running && r.engine === engine) { r.modelStatus = status; if (status === 'ready') { r.status = 'running'; r.error = null; } else if (status === 'loading') r.status = 'loading'; publish(); } },
       onError(message) { if (r.running && r.engine === engine) { r.events.push(...r.smoother.flush(Date.now())); r.error = message; r.status = 'error'; publish(); } },
     });
     r.engine = engine;

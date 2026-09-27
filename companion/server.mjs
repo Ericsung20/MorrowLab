@@ -29,7 +29,11 @@ async function poll() {
 
 http.createServer((req, res) => {
   const origin = req.headers.origin ?? '';
-  if (req.url !== '/events' || !ALLOWED_ORIGIN.test(origin)) return res.writeHead(403).end();
+  if (req.method !== 'GET' || !['/events', '/status'].includes(req.url) || !ALLOWED_ORIGIN.test(origin)) return res.writeHead(403).end();
+  if (req.url === '/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': origin, Vary: 'Origin' });
+    return res.end(JSON.stringify({ app: 'MorrowLab Companion', kind: 'legacy' }));
+  }
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': origin });
   res.write(`data: ${last}\n\n`);
   clients.add(res);

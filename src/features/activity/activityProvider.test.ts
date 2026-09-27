@@ -59,7 +59,7 @@ it('labels and classifies other tabs reported by the extension', () => {
   ]);
 });
 
-it('uses the desktop companion for other apps, preferring the extension for browser tabs', () => {
+it('uses the foreground companion window and only enriches matching tabs', () => {
   vi.useFakeTimers(); vi.setSystemTime(1000);
   vi.spyOn(document, 'hasFocus').mockReturnValue(false);
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
@@ -85,18 +85,37 @@ it('uses the desktop companion for other apps, preferring the extension for brow
   vi.advanceTimersByTime(2000);
   window.dispatchEvent(new MessageEvent('message', { data: { type: EXTENSION_TAB_MESSAGE, tab: { title: 'Notes', url: 'https://docs.google.com/d/1' } }, source: window }));
   vi.advanceTimersByTime(1000);
-  expect(p.stop().map(s => [s.label, s.category, s.durationSec])).toEqual([[ACTIVITY_LABELS.active, 'study', 0.5], ['친구', 'distraction', 2], ['Notes', 'study', 1]]);
+  // An old Chrome tab cannot replace the foreground app or Safari.
+  source.onmessage?.({ data: JSON.stringify({ title: 'Funny cats - YouTube', app: 'Safari' }) });
+  vi.advanceTimersByTime(1000);
+  source.onmessage?.({ data: JSON.stringify({ title: 'Notes - Google Chrome', app: 'Google Chrome' }) });
+  vi.advanceTimersByTime(1000);
+  source.onmessage?.({ data: JSON.stringify({ title: 'Hades', app: 'Hades' }) });
+  vi.advanceTimersByTime(1000);
+  source.onmessage?.({ data: 'null' });
+  expect(p.companionConnected).toBe(false);
+  expect(p.stop().map(s => [s.label, s.category, s.durationSec])).toEqual([
+    [ACTIVITY_LABELS.active, 'study', 0.5], ['친구', 'distraction', 3],
+    ['Funny cats - YouTube', 'distraction', 1], ['Notes', 'study', 1], ['Hades', 'distraction', 1],
+  ]);
   expect(source.closed).toBe(true);
   vi.unstubAllGlobals();
 });
 
-it('stops retrying quietly when the companion is not running', () => {
+it('reconnects when the companion opens mid-session and cancels retries on stop', () => {
+  vi.useFakeTimers();
   const sources: { close: () => void; closed?: boolean; onerror: (() => void) | null }[] = [];
   vi.stubGlobal('EventSource', class { static CLOSED = 2; onerror: (() => void) | null = null; closed = false; constructor() { sources.push(this); } close() { this.closed = true; } });
   const p = new BrowserActivityProvider(); p.start();
   sources[0].onerror?.();
   expect(sources[0].closed).toBe(true);
   expect(p.companionConnected).toBe(false);
+  vi.advanceTimersByTime(3000);
+  expect(sources).toHaveLength(2);
+  sources[1].onerror?.();
   p.stop();
+  vi.advanceTimersByTime(6000);
+  expect(sources).toHaveLength(2);
+  expect(vi.getTimerCount()).toBe(0);
   vi.unstubAllGlobals();
 });

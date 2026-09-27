@@ -31,6 +31,8 @@ export interface ActivitySegment {
   durationSec: number
   source: 'browser' | 'demo'
   /** Absent on sessions recorded before tab classification existed. */
+  /** YouTube playlists always count as studying. */
+  studyOverride?: boolean
   category?: ActivityCategory
   /** Hostname only; full URLs are never stored. */
   host?: string

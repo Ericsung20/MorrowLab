@@ -36,6 +36,21 @@ npm run dev        # http://localhost:5173
 
 ---
 
+## Safari and other Mac apps
+
+On the study-session page, use **Mac companion setup → Download for Mac**, move the unzipped app to
+Applications, and open it. Its setup window guides you through Accessibility and Screen Recording
+permissions; the website checks readiness automatically. Mac users do not need Terminal or Node.
+The app supports macOS 13+, Apple silicon and Intel.
+
+Maintainers generate the download with `bash companion/macos/build.sh` before building the website.
+Local test builds are ad-hoc signed; public downloads still require Developer ID signing and Apple
+notarization. See [companion setup, packaging, and release instructions](companion/README.md).
+The current companion connects to local MorrowLab pages only; hosted deployment requires additional
+origin and browser local-network configuration.
+
+---
+
 ## Project Structure
 
 ```

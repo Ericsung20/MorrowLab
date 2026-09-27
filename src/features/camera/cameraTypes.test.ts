@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FocusClassifier, facePose, type FaceObservation, type FrameObservation } from './cameraTypes';
+import { FocusClassifier, facePose, faceExpression, type FaceObservation, type FrameObservation } from './cameraTypes';
 
 const face = (yaw = 5, pitch = 10, jawOpen = 0, width = 0.3): FaceObservation => ({ yaw, pitch, jawOpen, width });
 const frame = (patch: Partial<FrameObservation> = {}): FrameObservation => ({ phone: 0, people: 1, faces: [face()], ...patch });
@@ -79,4 +79,28 @@ describe('facePose', () => {
     expect(facePose(landmarks(0, -20)).pitch).toBeCloseTo(-20);
     expect(facePose(landmarks(0, 0), [{ categoryName: 'jawOpen', score: 0.4 }]).jawOpen).toBe(0.4);
   });
+});
+
+it('maps blinks, gaze, jaw and smiles independently and sanitizes invalid scores', () => {
+  const expression = faceExpression([
+    { categoryName: 'eyeBlinkLeft', score: 0.95 }, { categoryName: 'eyeBlinkRight', score: 0.1 },
+    { categoryName: 'eyeLookOutLeft', score: 0.6 }, { categoryName: 'eyeLookInRight', score: 0.6 },
+    { categoryName: 'eyeLookDownLeft', score: 0.4 }, { categoryName: 'eyeLookDownRight', score: 0.4 },
+    { categoryName: 'jawOpen', score: 0.7 }, { categoryName: 'mouthSmileLeft', score: 0.8 },
+    { categoryName: 'mouthSmileRight', score: 0.6 },
+  ]);
+  expect(expression).toEqual({ blinkLeft: 0.95, blinkRight: 0.1, gazeX: 0.6, gazeY: 0.4, mouthOpen: 0.7, smile: 0.7 });
+  expect(faceExpression([{ categoryName: 'jawOpen', score: NaN }, { categoryName: 'eyeBlinkLeft', score: 2 }, { categoryName: 'eyeBlinkRight', score: -1 }]))
+    .toMatchObject({ mouthOpen: 0, blinkLeft: 1, blinkRight: 0, gazeX: 0, gazeY: 0 });
+});
+it('tracks the largest face before calibration without advancing classifier timing', () => {
+  const classifier = new FocusClassifier();
+  const expression = faceExpression([{ categoryName: 'jawOpen', score: 0.8 }]);
+  const subject = { ...face(30, 20), expression };
+  for (let i = 0; i < 60; i++) classifier.tracking([subject]);
+  expect(classifier.tracking([face(0, 0, 0, 0.1), subject])).toEqual({ yaw: 0, pitch: 0, expression });
+  // Sixty animation frames must not establish the baseline at 30 degrees.
+  for (let t = 0; t < 3000; t += 500) classifier.classify(frame(), t);
+  expect(classifier.tracking([subject])).toMatchObject({ yaw: 25, pitch: 10, expression });
+  expect(classifier.tracking([])).toBeNull();
 });

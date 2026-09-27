@@ -10,7 +10,7 @@ export interface ActivityProvider {
   readonly companionConnected?: boolean;
 }
 
-type SegmentMeta = Pick<ActivitySegment, 'category' | 'host' | 'taskId'>;
+type SegmentMeta = Pick<ActivitySegment, 'category' | 'host' | 'taskId' | 'studyOverride'>;
 
 /** Shared interval logic; snapshots include the current interval without closing it. */
 export class ActivityTimeline {
@@ -22,7 +22,7 @@ export class ActivityTimeline {
   reset() { this.segments = []; this.active = null; }
   transition(label: string, meta: SegmentMeta = {}) {
     const a = this.active;
-    if (a && a.label === label && a.meta.category === meta.category && a.meta.host === meta.host && a.meta.taskId === meta.taskId) return;
+    if (a && a.label === label && a.meta.studyOverride === meta.studyOverride && a.meta.category === meta.category && a.meta.host === meta.host && a.meta.taskId === meta.taskId) return;
     const now = this.now();
     this.close(now);
     this.active = { label, meta, start: now, id: crypto.randomUUID() };
@@ -58,23 +58,34 @@ export class BrowserActivityProvider implements ActivityProvider {
   /** undefined: companion not connected; null: no foreground window. */
   private window: ForegroundWindow | null | undefined = undefined;
   private companion: EventSource | null = null;
+  private companionRetry: ReturnType<typeof setTimeout> | null = null;
   private readonly tasks: StudyTask[];
   constructor(tasks: StudyTask[] = []) { this.tasks = tasks; }
   get extensionConnected() { return this.tab !== undefined; }
-  get companionConnected() { return this.window !== undefined; }
+  get companionConnected() { return !!this.window; }
   private update = () => {
     if (!this.running) return;
-    const tab = this.tab;
-    const ownTab = (!!tab?.url && hostOf(tab.url) === hostOf(location.href) && new URL(tab.url).port === location.port) ||
-      // Companion: the browser window showing this page is titled "<page title> - <browser>".
-      (tab === undefined && !!this.window && this.window.title.startsWith(`${document.title} - `));
-    if ((document.visibilityState === 'visible' && this.focused) || ownTab) return this.timeline.transition(ACTIVITY_LABELS.active, { category: 'study' });
+    const win = this.window;
+    // The foreground window is authoritative. Only enrich it with extension data
+    // when both reports describe the same page; Chrome may still hold an old tab.
+    const reportedTab = this.tab;
+    const samePage = !!win && !!reportedTab && (
+      win.url ? win.url === reportedTab.url :
+      !!reportedTab.title && (win.title === reportedTab.title || win.title.startsWith(`${reportedTab.title} - `))
+    );
+    const tab = win && !samePage ? undefined : reportedTab;
+    const localPage = (url?: string) => {
+      try { return !!url && new URL(url).origin === location.origin; } catch { return false; }
+    };
+    const ownTab = win
+      ? localPage(win.url) || (!win.url && (win.title === document.title || win.title.startsWith(`${document.title} - `)))
+      : localPage(tab?.url);
+    if ((!win && document.visibilityState === 'visible' && this.focused) || ownTab)
+      return this.timeline.transition(ACTIVITY_LABELS.active, { category: 'study' });
     if (tab) {
       const host = hostOf(tab.url) || undefined;
       return this.timeline.transition(tab.title.slice(0, 200) || host || 'Untitled tab', { host, ...classifyActivity(tab, this.tasks) });
     }
-    // Extension (precise for browser tabs) wins; the companion covers every other app, and browsers without the extension.
-    const win = this.window;
     if (win) {
       const label = `${win.title || win.app}`.slice(0, 200);
       return this.timeline.transition(label, { host: hostOf(win.url) || undefined, ...classifyWindow(win, this.tasks) });
@@ -86,8 +97,7 @@ export class BrowserActivityProvider implements ActivityProvider {
     if (typeof EventSource === 'undefined') return;
     const source = new EventSource(COMPANION_URL);
     this.companion = source;
-    let opened = false;
-    source.onopen = () => { opened = true; };
+
     source.onmessage = (e) => {
       try {
         const w = JSON.parse(e.data);
@@ -96,10 +106,16 @@ export class BrowserActivityProvider implements ActivityProvider {
       } catch { return; }
       this.update();
     };
-    // Not running: stop retrying (and spamming the console) until the next session. A drop mid-session retries.
+    // Opening the companion during a session must work without restarting the session.
     source.onerror = () => {
-      if (!opened) { source.close(); this.companion = null; }
-      else if (source.readyState === EventSource.CLOSED) { this.window = undefined; this.update(); }
+      source.close();
+      this.companion = null;
+      this.window = undefined;
+      this.update();
+      if (this.running && this.companionRetry === null) this.companionRetry = setTimeout(() => {
+        this.companionRetry = null;
+        if (this.running) this.connectCompanion();
+      }, 3000);
     };
   }
   private onMessage = (e: MessageEvent) => {
@@ -114,6 +130,8 @@ export class BrowserActivityProvider implements ActivityProvider {
     if (this.running) return;
     this.running = true;
     this.timeline.reset();
+    this.tab = undefined;
+    this.window = undefined;
     this.focused = document.hasFocus();
     document.addEventListener('visibilitychange', this.update);
     window.addEventListener('focus', this.focus);
@@ -130,6 +148,8 @@ export class BrowserActivityProvider implements ActivityProvider {
     window.removeEventListener('focus', this.focus);
     window.removeEventListener('blur', this.blur);
     window.removeEventListener('message', this.onMessage);
+    if (this.companionRetry !== null) clearTimeout(this.companionRetry);
+    this.companionRetry = null;
     this.companion?.close();
     this.companion = null;
     return this.timeline.stop();

@@ -54,3 +54,11 @@ it('shows distracting screen time inside studying as its own timeline type', () 
   ]);
   expect(new Set(timeline.map(e => e.id)).size).toBe(timeline.length);
 });
+
+it('credits playlists over camera distraction and during camera gaps without double counting', () => {
+  const at = (s: number) => new Date(s * 1000).toISOString();
+  const camera: CameraEvent = { id: 'phone', type: 'phone', startISO: at(0), endISO: at(60), durationSec: 60, confidence: 1, source: 'model' };
+  const playlist: ActivitySegment = { id: 'playlist', label: 'Music', startISO: at(20), endISO: at(80), durationSec: 60, source: 'browser', category: 'study', studyOverride: true };
+  expect(withScreenDistraction([camera], [playlist]).map(e => [e.type, e.durationSec])).toEqual([['phone', 20], ['studying', 60]]);
+  expect(studySecondsOnTask([camera], [playlist])).toBe(60);
+});

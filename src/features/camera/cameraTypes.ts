@@ -1,3 +1,4 @@
+import type { FaceExpression, HeadTracking } from '../../contracts/faceTracking';
 import type { CameraEventType } from '../../contracts/morrowlab';
 
 export type ModelStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -7,14 +8,16 @@ export interface CameraSample {
   /** Unix epoch milliseconds. */
   timestamp: number;
   /** Head angle in degrees relative to the calibrated screen pose, when a face is visible (for display/tuning). */
-  pose?: { yaw: number; pitch: number };
+  pose?: HeadTracking;
 }
 
 /** Head pose in degrees. yaw: turning sideways (either sign); pitch: + = looking down. */
-export interface FaceObservation { yaw: number; pitch: number; jawOpen: number; width: number }
+export interface FaceObservation { yaw: number; pitch: number; jawOpen: number; width: number; expression?: FaceExpression }
 export interface FrameObservation { phone: number; people: number; faces: FaceObservation[] }
 
 export const INFERENCE_INTERVAL_MS = 500;
+/** Facial animation needs to catch short blinks; object detection remains at 2 Hz. */
+export const FACE_INTERVAL_MS = 50;
 export const PERSON_THRESHOLD = 0.5;
 /**
  * Calibration knobs (angles in degrees). Pose is relative to the student's own pose over the first
@@ -38,6 +41,21 @@ export const REQUIRED_SAMPLES: Record<CameraEventType, number> = { studying: 3, 
 
 interface Landmark { x: number; y: number; z?: number }
 const deg = (rad: number) => (rad * 180) / Math.PI;
+/** Blendshape scores are independent of camera resolution; missing/invalid signals stay neutral. */
+export function faceExpression(blendshapes: { categoryName: string; score: number }[]): FaceExpression {
+  const score = (name: string) => {
+    const value = blendshapes.find(c => c.categoryName === name)?.score ?? 0;
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  };
+  return {
+    blinkLeft: score('eyeBlinkLeft'), blinkRight: score('eyeBlinkRight'),
+    // Frontal portrait coordinates: the wearer’s anatomical left appears on the right.
+    gazeX: (score('eyeLookOutLeft') + score('eyeLookInRight') - score('eyeLookInLeft') - score('eyeLookOutRight')) / 2,
+    gazeY: (score('eyeLookDownLeft') + score('eyeLookDownRight') - score('eyeLookUpLeft') - score('eyeLookUpRight')) / 2,
+    mouthOpen: score('jawOpen'),
+    smile: (score('mouthSmileLeft') + score('mouthSmileRight')) / 2,
+  };
+}
 /**
  * Uses the landmarks' depth (z, same scale as x, smaller = closer to the camera): turning the head moves one
  * cheek closer than the other; looking down brings the forehead closer than the chin.
@@ -46,10 +64,12 @@ const deg = (rad: number) => (rad * 180) / Math.PI;
 export function facePose(landmarks: Landmark[], blendshapes: { categoryName: string; score: number }[] = [], aspect = 0.75): FaceObservation {
   const left = landmarks[234], right = landmarks[454], forehead = landmarks[10], chin = landmarks[152];
   const z = (l: Landmark) => l.z ?? 0;
+  const expression = faceExpression(blendshapes);
   return {
     yaw: deg(Math.atan2(z(right) - z(left), Math.abs(right.x - left.x) || 1e-6)),
     pitch: deg(Math.atan2(z(chin) - z(forehead), Math.abs(chin.y - forehead.y) * aspect || 1e-6)),
-    jawOpen: blendshapes.find(c => c.categoryName === 'jawOpen')?.score ?? 0,
+    jawOpen: expression.mouthOpen,
+    expression,
     width: Math.abs(right.x - left.x),
   };
 }
@@ -73,6 +93,14 @@ export class FocusClassifier {
   private readonly tuning: typeof FOCUS_TUNING;
   constructor(tuning = FOCUS_TUNING) { this.tuning = tuning; }
 
+  /** Animation frames do not advance calibration, talking history, or event smoothing. */
+  tracking(faces: FaceObservation[]): HeadTracking | null {
+    const face = faces.reduce<FaceObservation | undefined>((a, f) => (!a || f.width > a.width ? f : a), undefined);
+    if (!face) return null;
+    return { yaw: face.yaw - (this.baseline?.yaw ?? face.yaw), pitch: face.pitch - (this.baseline?.pitch ?? face.pitch),
+      expression: face.expression };
+  }
+
   classify(obs: FrameObservation, timestamp: number): CameraSample {
     const t = this.tuning;
     const face = obs.faces.reduce<FaceObservation | undefined>((a, f) => (!a || f.width > a.width ? f : a), undefined);
@@ -86,7 +114,7 @@ export class FocusClassifier {
         }
       }
       if (this.baseline) {
-        pose = { yaw: face.yaw - this.baseline.yaw, pitch: face.pitch - this.baseline.pitch };
+        pose = this.tracking([face])!;
         const k = this.turned ? t.release : 1;
         this.turned = Math.abs(pose.yaw) > t.yawAway * k || pose.pitch < t.pitchUp * k;
       }

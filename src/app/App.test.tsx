@@ -11,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { dataService } from "./dependencies";
 import { calculateSessionScore } from '../features/scoring/calculateSessionScore';
-beforeEach(async () => { await dataService.resetWorkspace(); });
+beforeEach(async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  await dataService.resetWorkspace();
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -60,6 +63,7 @@ describe("MorrowLab product flow", () => {
     await new Promise(resolve => setTimeout(resolve, 20));
     fireEvent.click(screen.getByRole("button", { name: "End session" }));
     await screen.findByRole("heading", { name: "How did it go?" });
+    expect(screen.getByRole("region", { name: "Study session highlights" })).toBeInTheDocument();
     // No tab evidence yet, so the estimate starts at 0; the student fills in what they did.
     expect(screen.getByLabelText("Minutes on Calculus Homework")).toHaveValue(0);
     fireEvent.change(screen.getByLabelText("Minutes on Calculus Homework"), { target: { value: "25" } });

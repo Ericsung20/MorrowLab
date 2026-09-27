@@ -1,3 +1,4 @@
+import type { HeadTracking } from './faceTracking';
 import type {
   StudyTask,
   StudySession,
@@ -20,6 +21,8 @@ export interface MorrowLabDataService {
   finishSession(
     sessionId: string,
     input: {
+      /** Stop time, excluding time spent writing the reflection. */
+      endedAtISO?: string;
       cameraEvents: CameraEvent[];
       activitySegments: ActivitySegment[];
       reflection: SessionReflection;
@@ -53,7 +56,7 @@ export interface SensorLiveState {
   /** The screen in front right now is a distracting site/app. */
   screenDistracted: boolean;
   /** Live head angle in degrees relative to the calibrated screen pose (+pitch = looking down). */
-  headPose?: { yaw: number; pitch: number } | null;
+  headPose?: HeadTracking | null;
   error?: string;
 }
 export interface StudySensorController {

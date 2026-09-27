@@ -72,3 +72,27 @@ Public fields: `status`, `modelStatus`, `currentState`, `confidence`,
 No video, image, blob, screenshot, or base64 data is persisted or sent by these
 modules. The only outputs are interval metadata. Models are released on stop;
 each new session loads its own model, and duplicate starts never load twice.
+
+### Live 3D mascot expressions
+
+The simple sprout mascot has a matte dumpling shape, tiny dot eyes, and a minimal mouth, rendered as lit 3D geometry with depth occlusion. It uses the largest visible face's head pose and MediaPipe blendshapes:
+independent left/right blinks, horizontal/vertical eye movement, jaw opening, and smile.
+Facial animation runs at up to 20 Hz (device performance permitting); object detection, calibration,
+and behavior classification remain on their 500 ms cadence. Animation frames do not advance
+study-event smoothing. Tracking resets to a neutral face on face loss, stopped video, or inference
+failure. `headPose.expression` is transient UI data and is never included in saved camera events.
+
+### Camera interruptions and long sessions
+
+The camera engine only classifies fresh video frames. Healthy background sessions continue at 2 Hz;
+visible facial animation runs up to 20 Hz. Muted/stalled background streams wait for the browser to
+resume instead of permanently failing after ten seconds. Visibility/page restoration resumes video
+playback and allows a fresh-frame grace period. Ended tracks or foreground stalls reconnect the
+camera; inference failures rebuild models on CPU. Recovery is limited to three attempts per failure
+period, with backoff after failed requests; ten healthy seconds reset the budget. Permission denials
+stop retries. Ending a session removes listeners, timers and models and stops late-arriving streams.
+
+During interruptions, the last camera event ends at the last observed frame. Missing camera time is
+not silently included in the preceding study event. Session timers, screen activity, and manual
+controls remain available. Recovery is tested with simulated one-hour background/sleep intervals;
+actual browser/OS camera suspension still depends on the user's device and permissions.

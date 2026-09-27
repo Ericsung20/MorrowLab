@@ -6,6 +6,7 @@ import { dataService, isDemoAdapter } from "../app/dependencies";
 import { useLoad } from "../hooks/ui/useLoad";
 import {
   BehaviorTimeline,
+  SessionHighlights,
   ErrorNotice,
   Missing,
   Pending,
@@ -51,6 +52,7 @@ export default function Summary() {
           <ArrowRight size={17} />
         </Link>
       </div>
+      <SessionHighlights events={session.cameraEvents} segments={session.activitySegments} elapsed={session.durationSec} />
       <section className="score-panel">
         <div className="score-circle">
           <strong>{session.score ?? "—"}</strong>

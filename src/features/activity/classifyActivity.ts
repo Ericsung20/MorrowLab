@@ -58,11 +58,13 @@ export function hostOf(url: string | undefined) {
 }
 
 /** Decides whether a tab is study, distraction, or unknown (neutral) from its title and URL. */
-export function classifyActivity(tab: { title: string; url?: string }, tasks: StudyTask[] = []): { category: ActivityCategory; taskId?: string } {
+export function classifyActivity(tab: { title: string; url?: string }, tasks: StudyTask[] = []): { category: ActivityCategory; taskId?: string; studyOverride?: boolean } {
   const host = hostOf(tab.url)
   const title = tab.title.toLowerCase()
   const taskId = matchTask(tab.title, tasks)
   if (host === 'youtube.com' || host === 'youtu.be') {
+    const playlist = !!(tab.url && new URL(tab.url).searchParams.get('list')) || /\bplaylist\b|플레이리스트|플리/.test(title)
+    if (playlist) return { category: 'study', taskId, studyOverride: true }
     if (tab.url?.includes('/shorts/')) return { category: 'distraction' }
     const score = countHits(title, STUDY_WORDS) + (taskId ? 2 : 0) - countHits(title, PLAY_WORDS)
     // YouTube is entertainment by default; a video must look academic to count as study.
@@ -82,18 +84,20 @@ const TITLE_SITES: [string, string][] = [
   ['google 문서', 'docs.google.com'], ['notion', 'notion.so'], ['wikipedia', 'wikipedia.org'], ['khan academy', 'khanacademy.org'],
 ]
 const DISTRACTION_APPS = ['kakaotalk', 'discord', 'telegram', 'whatsapp', 'steam', 'league of legends', 'riot client', 'battle.net',
-  'minecraft', 'roblox', 'valorant', 'overwatch', 'maplestory', 'netflix', 'tiktok', 'instagram']
+  'minecraft', 'roblox', 'valorant', 'overwatch', 'maplestory', 'netflix', 'tiktok', 'instagram',
+  'fortnite', 'leagueclient', 'leagueclientux', 'dota', 'counter-strike', 'cs2', 'baldur', 'stardew valley', 'hades',
+  'terraria', 'genshin', 'honkai', 'civilization', 'slay the spire', 'balatro', 'world of warcraft', 'starcraft', 'hearthstone']
 const STUDY_APPS = ['word', 'winword', 'powerpoint', 'powerpnt', 'excel', 'onenote', 'notion', 'obsidian', 'acrobat', 'pdf',
   'visual studio code', 'code', 'pycharm', 'intellij', 'matlab', 'rstudio', 'goodnotes', 'notability', 'zotero', 'anki', 'hwp', '한글', 'xcode']
 
 /** Classifies the foreground window reported by the desktop companion ({ title, app }, url on macOS only). */
-export function classifyWindow(win: { title: string; app: string; url?: string }, tasks: StudyTask[] = []): { category: ActivityCategory; taskId?: string } {
+export function classifyWindow(win: { title: string; app: string; url?: string }, tasks: StudyTask[] = []): { category: ActivityCategory; taskId?: string; studyOverride?: boolean } {
   const app = win.app.toLowerCase()
   if (countHits(app, BROWSER_APPS)) {
     // "Video title - YouTube - Google Chrome" → drop the browser suffix, infer the site from the title.
-    const title = win.title.replace(/\s[-–—]\s[^-–—]*$/, '')
+    const title = win.title.replace(/\s[-–—]\s(?:Google Chrome|Chrome|Safari|Mozilla Firefox|Firefox|Microsoft Edge|Brave|Opera|Arc|Vivaldi)(?:\s.*)?$/i, '')
     const site = TITLE_SITES.find(([name]) => countHits(title.toLowerCase(), [name]))?.[1]
-    return classifyActivity({ title, url: win.url ?? (site && `https://${site}/`) }, tasks)
+    return classifyActivity({ title, url: win.url || (site && `https://${site}/`) }, tasks)
   }
   if (countHits(app, DISTRACTION_APPS)) return { category: 'distraction' }
   const taskId = matchTask(win.title, tasks)
@@ -116,7 +120,7 @@ export function estimateTaskTime(segments: ActivitySegment[], cameraEvents: Came
     if (s.taskId && known.has(s.taskId)) current = s.taskId
     if (!current) continue
     const start = Date.parse(s.startISO), end = Date.parse(s.endISO)
-    const blocked = offTask.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(end, b) - Math.max(start, a)), 0)
+    const blocked = s.studyOverride ? 0 : offTask.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(end, b) - Math.max(start, a)), 0)
     totals.set(current, (totals.get(current) ?? 0) + Math.max(0, end - start - blocked) / 1000)
   }
   return [...totals].map(([taskId, seconds]) => ({ taskId, seconds: Math.round(seconds) }))

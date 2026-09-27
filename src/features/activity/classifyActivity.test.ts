@@ -76,3 +76,22 @@ describe('estimateTaskTime', () => {
     expect(estimateTaskTime([seg(0, 60, { category: 'neutral' })], [], tasks)).toEqual([])
   })
 })
+
+it('always treats YouTube playlists as study, including entertainment and title-only reports', () => {
+  expect(yt('Official music video', '/watch?v=1&list=PL123')).toMatchObject({ category: 'study', studyOverride: true });
+  expect(yt('Funny playlist')).toMatchObject({ category: 'study', studyOverride: true });
+  expect(yt('감성 플레이리스트')).toMatchObject({ category: 'study', studyOverride: true });
+  expect(classifyWindow({ app: 'Google Chrome', title: 'Music playlist - YouTube - Google Chrome' })).toMatchObject({ category: 'study', studyOverride: true });
+  expect(classifyActivity({ title: 'playlist', url: 'https://netflix.com' }).category).toBe('distraction');
+  expect(yt('Funny video', '/watch?v=1&list=')).toEqual({ category: 'distraction' });
+});
+
+it('preserves Safari site suffixes and falls back from empty URLs', () => {
+  expect(classifyWindow({ app: 'Safari', title: 'Funny cats - YouTube' }).category).toBe('distraction');
+  expect(classifyWindow({ app: 'Safari', title: 'Calculus lecture - YouTube', url: '' }).category).toBe('study');
+  expect(classifyWindow({ app: 'Safari', title: 'Music playlist - YouTube' })).toMatchObject({ studyOverride: true });
+  expect(classifyWindow({ app: 'Safari', title: 'Weather' }).category).toBe('neutral');
+});
+it.each(['LeagueClientUx.exe', 'Stardew Valley', 'Hades', 'Balatro'])('recognizes game app %s', app => {
+  expect(classifyWindow({ app, title: '' }).category).toBe('distraction');
+});
