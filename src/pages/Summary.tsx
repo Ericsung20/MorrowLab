@@ -5,7 +5,6 @@ import { ArrowRight, Check } from "lucide-react";
 import { dataService, isDemoAdapter } from "../app/dependencies";
 import { useLoad } from "../hooks/ui/useLoad";
 import {
-  ActivityList,
   BehaviorTimeline,
   ErrorNotice,
   Missing,
@@ -94,6 +93,11 @@ export default function Summary() {
             "Off-task events",
             session.cameraEvents.filter((e) => e.type === "distracted" || e.type === "talking").length,
           ],
+          // The full screen activity log stays in local storage; only the distracting total is shown.
+          [
+            "Screen distraction",
+            duration(session.activitySegments.filter((s) => s.category === "distraction").reduce((sum, s) => sum + s.durationSec, 0)),
+          ],
         ].map(([label, value]) => (
           <div className="panel" key={label}>
             <span>{label}</span>
@@ -105,8 +109,6 @@ export default function Summary() {
         <section className="panel detail-panel">
           <h2>Your study rhythm</h2>
           <BehaviorTimeline events={session.cameraEvents} />
-          <h3>Activity summary</h3>
-          <ActivityList segments={session.activitySegments} />
         </section>
         <section className="panel detail-panel">
           <h2>What to take forward</h2>

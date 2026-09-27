@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { ActivitySegment, CameraEvent } from "../contracts/morrowlab";
+import type { CameraEvent } from "../contracts/morrowlab";
 import { duration } from "./format";
 export function ErrorNotice({ message }: { message: string }) {
   return message ? (
@@ -73,25 +73,5 @@ export function BehaviorTimeline({ events }: { events: CameraEvent[] }) {
         ))}
       </div>
     </>
-  );
-}
-export function ActivityList({ segments }: { segments: ActivitySegment[] }) {
-  return (
-    <div className="event-list">
-      {segments.length ? (
-        // Newest first.
-        [...segments].reverse().map((s) => (
-          <div key={s.id}>
-            <span>
-              {s.label}
-              {s.category && <span className={`category ${s.category}`}>{s.category}</span>}
-            </span>
-            <span>{duration(s.durationSec)}</span>
-          </div>
-        ))
-      ) : (
-        <p className="muted">No activity recorded yet.</p>
-      )}
-    </div>
   );
 }

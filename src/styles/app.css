@@ -732,26 +732,6 @@ textarea::placeholder {
   flex-wrap: wrap;
   gap: 12px;
 }
-.category {
-  margin-left: 7px;
-  padding: 1px 6px;
-  border-radius: 9px;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.category.study {
-  background: #e6ecdd;
-  color: #385632;
-}
-.category.distraction {
-  background: #f5e1d8;
-  color: #8a3f22;
-}
-.category.neutral {
-  background: #eef0ea;
-  color: #7a8570;
-}
 .extension-hint {
   display: flex;
   gap: 6px;
