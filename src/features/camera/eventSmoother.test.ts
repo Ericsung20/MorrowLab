@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { EventSmoother } from './eventSmoother';
-import { deriveSample } from './cameraTypes';
 import type { CameraEventType } from '../../contracts/morrowlab';
 
 describe('EventSmoother', () => {
@@ -32,9 +31,13 @@ describe('EventSmoother', () => {
     establish(s, 'studying'); push(s, 'phone', 500);
     expect(s.currentState).toBe('studying');
   });
-  it('prioritizes phones and uses heuristic absence confidence', () => {
-    expect(deriveSample([{ class: 'person', score: 0.9 }, { class: 'cell phone', score: 0.4 }], 0).state).toBe('phone');
-    expect(deriveSample([{ class: 'person', score: 0.6 }], 0).state).toBe('studying');
-    expect(deriveSample([], 0)).toMatchObject({ state: 'away', confidence: 0.7 });
+  it('confirms quick phone glances sooner than looking away', () => {
+    const s = new EventSmoother({ studying: 3, phone: 2, away: 4, distracted: 10, talking: 6 }); establish(s, 'studying');
+    push(s, 'phone', 3000); expect(s.currentState).toBe('studying');
+    push(s, 'phone', 3500); expect(s.currentState).toBe('phone');
+    establish(s, 'studying', 4000);
+    for (let t = 7000; t < 11500; t += 500) push(s, 'distracted', t);
+    expect(s.currentState).toBe('studying');
+    push(s, 'distracted', 11500); expect(s.currentState).toBe('distracted');
   });
 });

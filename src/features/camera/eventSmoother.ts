@@ -3,16 +3,16 @@ import type { CameraSample } from './cameraTypes';
 
 interface Interval { state: CameraEventType; start: number; sum: number; count: number; id: string }
 
-/** Three consecutive observations confirm a state, backdated to its first sample. */
+/** Consecutive observations (per-state count) confirm a state, backdated to its first sample. */
 export class EventSmoother {
   private active: Interval | null = null;
   private candidate: Interval | null = null;
   private lastTimestamp = -Infinity;
   private sequence = 0;
 
-  private readonly requiredSamples: number;
+  private readonly requiredSamples: number | Record<CameraEventType, number>;
   private readonly minimumDurationMs: number;
-  constructor(requiredSamples = 3, minimumDurationMs = 500) {
+  constructor(requiredSamples: number | Record<CameraEventType, number> = 3, minimumDurationMs = 500) {
     this.requiredSamples = requiredSamples;
     this.minimumDurationMs = minimumDurationMs;
   }
@@ -32,7 +32,8 @@ export class EventSmoother {
     }
     this.candidate.sum += confidence;
     this.candidate.count++;
-    if (this.candidate.count < this.requiredSamples) return [];
+    const required = typeof this.requiredSamples === 'number' ? this.requiredSamples : this.requiredSamples[sample.state];
+    if (this.candidate.count < required) return [];
     const closed = this.snapshot(this.candidate.start);
     this.active = this.candidate;
     this.candidate = null;
