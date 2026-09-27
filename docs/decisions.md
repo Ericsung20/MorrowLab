@@ -19,7 +19,7 @@
 | Storage | Dexie (IndexedDB) | Local-first, no raw data leaves the device |
 | Frontend | React + TypeScript + Vite | |
 | Charts | Recharts | |
-| ML | TensorFlow.js + COCO-SSD | Detects person + cell phone → studying / phone_usage / away |
+| ML | MediaPipe Tasks Vision (EfficientDet-Lite2 + Face Landmarker) | Phone/person detection + head pose → studying / phone / away / distracted / talking |
 
 ## Decision Log
 

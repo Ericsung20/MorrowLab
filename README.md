@@ -13,7 +13,7 @@ MorrowLab observes how you actually study (camera behavior events, tab/app activ
 
 ## Tech Stack
 
-React + TypeScript + Vite · React Router · Dexie (IndexedDB, local-first) · Recharts · date-fns · lucide-react · TensorFlow.js + COCO-SSD (in-browser camera detection) · Vitest + Testing Library
+React + TypeScript + Vite · React Router · Dexie (IndexedDB, local-first) · Recharts · date-fns · lucide-react · MediaPipe Tasks Vision (in-browser face + phone detection) · Chrome extension for tab tracking (`extension/`) · Vitest + Testing Library
 
 ## Getting Started
 

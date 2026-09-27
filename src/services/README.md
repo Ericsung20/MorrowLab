@@ -23,9 +23,10 @@ storage errors. Components do not need to import Dexie or the pure engines.
 - Starting a session persists it immediately. Finishing persists its reflection,
   observations, elapsed wall-clock seconds, and calculated Session Score in one
   transaction. A second finish rejects to prevent accidental replacement.
-- A reflection with `completionPct === 100` marks its task done in the same
-  transaction. Lower percentages leave it unfinished. The assigned interface
-  has no independent task completion/edit/delete method.
+- Sessions cover every task. `startSession()` takes no task; `finishSession`
+  receives the confirmed `taskBreakdown` (seconds per task) and
+  `completedTaskIds`, which are marked done in the same transaction. Schema v2
+  migrates v1 single-task sessions into a one-entry breakdown.
 - Ratings accept finite numbers from 1–5; completion accepts 0–100. Camera
   confidence accepts 0–1. Event durations must be finite and non-negative with
   valid ordered timestamps. Camera observations may be empty when unavailable;
@@ -42,10 +43,10 @@ storage errors. Components do not need to import Dexie or the pure engines.
 
 - New completions with recognized browser activity use focus 30%, understanding
   30%, completion 20%, camera behavior 10%, and screen activity 10%. Screen score
-  is 100 times the study share of recognized recorded screen time. `Other
-  tab/window` counts as off-task; `MorrowLab active` and explicitly self-reported
-  research/lecture intervals count as study. Unknown labels and demo activity
-  are excluded. If no screen measurement exists, use the original 35/35/20/10
+  is 100 times the study share of classified screen time (`category` of
+  `study` vs `distraction`). Neutral/unknown tabs, unclassified legacy
+  segments, and demo activity are excluded. Camera behavior counts phone, away,
+  distracted and talking time as off-task. If no screen measurement exists, use the original 35/35/20/10
   weights. Stored historical scores are not rewritten; comparisons can therefore
   include scores produced with the older formula.
 

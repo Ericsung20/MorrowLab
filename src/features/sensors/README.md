@@ -7,7 +7,7 @@ import { useRef } from 'react';
 import { useStudySensors } from '../../features/sensors/useStudySensors';
 
 const videoRef = useRef<HTMLVideoElement>(null);
-const sensors = useStudySensors(videoRef); // optional second argument: { demoActivity: true }
+const sensors = useStudySensors(videoRef, { tasks }); // tasks: match tabs to tasks; also { demoActivity: true }
 // Render <video ref={videoRef} muted playsInline /> before starting.
 // In a user click handler:
 await sensors.start();
@@ -20,15 +20,8 @@ the equivalent import is `@/features/sensors/useStudySensors`.
 
 Public fields: `status`, `modelStatus`, `currentState`, `confidence`,
 `elapsedSeconds`, `studySeconds`, `phoneEventCount`, `awayEventCount`,
-`cameraEvents`, `activitySegments`, `error`, `start`, `stop`,
-`simulatePhone(durationSec = 5)`, `simulateAway(durationSec = 5)`.
-
-`setStudyMode('strict' | 'research' | 'lecture')` selects how future off-page
-intervals are labeled, before or during a session. Strict is the default.
-Research/lecture are self-declared study purposes, not classification of another
-website's content. Switching mode closes the previous interval without relabeling
-past time. Return to strict mode when external study ends. Labels are defined in
-`src/contracts/activity.ts`; the persisted `ActivitySegment` shape is unchanged.
+`offTaskEventCount`, `extensionConnected`, `cameraEvents`, `activitySegments`,
+`error`, `start`, `stop`, `simulatePhone(durationSec = 5)`, `simulateAway(durationSec = 5)`.
 
 - `start()` is asynchronous and idempotent while monitoring. Invoke only on a
   user action. A rendered video element, secure context (HTTPS or localhost),
@@ -48,16 +41,30 @@ past time. Return to strict mode when external study ends. Labels are defined in
   `stop()` is synchronous (also safe to await), idempotent, and flushes intervals.
 - A restart starts a fresh session. Unmount stops tracks, listeners, and timers;
   callers should finish/persist explicitly before navigating away.
-- `currentState` is null before three confirming predictions and after stop.
-  “Studying” means a detected person with no detected phone; it does not measure
-  attention, gaze, emotion, or mental state. Absence confidence 0.7 is heuristic.
-- COCO-SSD lite loads lazily. Model weights require network access unless cached;
-  frames stay local. Inferences use a transient 320×240 canvas and an 850 ms delay
-  after each inference. Phone threshold is 0.35, person threshold is 0.55.
-- Three consecutive samples confirm a state, backdated to the first sample.
-  Sub-500 ms model intervals and unconfirmed initial candidates are discarded.
-- Browser activity reflects this document's visibility and focus only. The demo
-  provider produces synthetic native-app labels marked `source: 'demo'`.
+- Camera states (`FocusClassifier` in `src/features/camera/cameraTypes.ts`):
+  - `studying`: facing the screen **or looking down** at paper/tablet; also a visible
+    body with a hidden face (head far down while writing).
+  - `phone`: a phone is detected while the student looks down/away or their face is
+    hidden. A phone lying on the desk while they face the screen is ignored. The
+    state is held 2 s after the last detection so a partly visible phone doesn't flicker.
+  - `distracted`: head turned sideways or looking up (confirmed after ~5 s, so
+    glances don't count).
+  - `talking`: another person in frame and the student turns to them or keeps moving
+    their mouth.
+  - `away`: nobody in frame.
+  Head pose is measured relative to the student's own pose over the first ~3 s
+  (assumed to be looking at the screen), so camera placement doesn't matter. The
+  thresholds are the `FOCUS_TUNING` constants; tune them against real footage.
+- MediaPipe EfficientDet-Lite2 (phone/person) and Face Landmarker (head pose, mouth)
+  load lazily, GPU first with a CPU fallback. Model files (~27 MB) need network
+  access once, then come from the browser cache; frames stay local. Inference runs
+  every 500 ms on the video element directly.
+- `REQUIRED_SAMPLES` sets how many consecutive samples confirm each state, backdated to
+  the first sample. Sub-500 ms model intervals and unconfirmed candidates are discarded.
+- Browser activity: this page's visibility/focus, plus the active tab's title/host
+  when the MorrowLab extension (`/extension`) is installed. Tabs are classified as
+  study, distraction or neutral by `classifyActivity`. The demo provider produces
+  synthetic native-app labels marked `source: 'demo'`.
 - Shared output types live in `src/contracts/morrowlab.ts`. The older
   `src/shared/types.ts` and `src/sensors/index.ts` interfaces are separate legacy
   scaffolding; use this hook and the new contract for integration.
