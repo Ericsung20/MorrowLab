@@ -23,11 +23,43 @@ interface Snapshot extends SensorResult {
   offTaskEventCount: number;
   extensionConnected: boolean;
   companionConnected: boolean;
+  /** The screen in front right now is a distracting site/app (per the extension/companion). */
+  screenDistracted: boolean;
   error: string | null;
   /** Live head angle (degrees) relative to the calibrated screen pose, for display/tuning. */
   headPose: { yaw: number; pitch: number } | null;
 }
-const initial: Snapshot = { headPose: null, status: 'idle', modelStatus: 'idle', currentState: null, confidence: 0, elapsedSeconds: 0, studySeconds: 0, phoneEventCount: 0, awayEventCount: 0, offTaskEventCount: 0, extensionConnected: false, companionConnected: false, cameraEvents: [], activitySegments: [], error: null };
+const initial: Snapshot = { headPose: null, status: 'idle', modelStatus: 'idle', currentState: null, confidence: 0, elapsedSeconds: 0, studySeconds: 0, phoneEventCount: 0, awayEventCount: 0, offTaskEventCount: 0, extensionConnected: false, companionConnected: false, screenDistracted: false, cameraEvents: [], activitySegments: [], error: null };
+
+export type TimelineEvent = Omit<CameraEvent, 'type'> & { type: CameraEventType | 'screen' };
+/**
+ * For display: splits camera "studying" time wherever a distracting site/app was in front into 'screen'
+ * (facing the camera while on Instagram isn't study). Other camera states (phone, away…) take precedence.
+ */
+export function withScreenDistraction(events: CameraEvent[], segments: ActivitySegment[]): TimelineEvent[] {
+  const distracting = segments.filter(s => s.category === 'distraction')
+    .map(s => [Date.parse(s.startISO), Date.parse(s.endISO)] as const).sort((a, b) => a[0] - b[0]);
+  return events.flatMap(e => {
+    if (e.type !== 'studying') return [e];
+    const end = Date.parse(e.endISO);
+    const pieces: TimelineEvent[] = [];
+    const piece = (type: TimelineEvent['type'], from: number, to: number) => {
+      if (to > from) pieces.push({ ...e, id: `${e.id}-${pieces.length}`, type, startISO: new Date(from).toISOString(), endISO: new Date(to).toISOString(), durationSec: (to - from) / 1000 });
+    };
+    let cursor = Date.parse(e.startISO);
+    for (const [a, b] of distracting) {
+      const from = Math.max(a, cursor), to = Math.min(b, end);
+      if (to <= from) continue;
+      piece('studying', cursor, from);
+      piece('screen', from, to);
+      cursor = to;
+    }
+    piece('studying', cursor, end);
+    return pieces;
+  });
+}
+export const studySecondsOnTask = (events: CameraEvent[], segments: ActivitySegment[]) =>
+  withScreenDistraction(events, segments).filter(e => e.type === 'studying').reduce((sum, e) => sum + e.durationSec, 0);
 
 export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, options: StudySensorOptions = {}) {
   const [snapshot, setSnapshot] = useState<Snapshot>(initial);
@@ -56,7 +88,9 @@ export function useStudySensors(videoRef: RefObject<HTMLVideoElement | null>, op
     if (r.manual && now >= Date.parse(r.manual.endISO)) finishManual(now);
     const active = r.manual ? { ...r.manual, endISO: new Date(now).toISOString(), durationSec: Math.max(0, (now - Date.parse(r.manual.startISO)) / 1000) } : r.smoother.snapshot(now);
     const events = [...r.events, ...(active ? [active] : [])];
-    setSnapshot({ headPose: r.running ? r.pose : null, status: r.status, modelStatus: r.modelStatus, error: r.error, currentState: r.running ? (r.manual?.type ?? r.smoother.currentState) : null, confidence: r.running ? (r.manual?.confidence ?? r.smoother.confidence) : 0, elapsedSeconds: r.started ? Math.floor((now - r.started) / 1000) : 0, studySeconds: events.filter(e => e.type === 'studying').reduce((sum, e) => sum + e.durationSec, 0), phoneEventCount: events.filter(e => e.type === 'phone').length, awayEventCount: events.filter(e => e.type === 'away').length, offTaskEventCount: events.filter(e => e.type === 'distracted' || e.type === 'talking').length, extensionConnected: !!r.provider?.extensionConnected, companionConnected: !!r.provider?.companionConnected, cameraEvents: events, activitySegments: r.provider?.getSegments() ?? [] });
+    const segments = r.provider?.getSegments() ?? [];
+    const studySeconds = studySecondsOnTask(events, segments);
+    setSnapshot({ screenDistracted: r.running && segments.at(-1)?.category === 'distraction', headPose: r.running ? r.pose : null, status: r.status, modelStatus: r.modelStatus, error: r.error, currentState: r.running ? (r.manual?.type ?? r.smoother.currentState) : null, confidence: r.running ? (r.manual?.confidence ?? r.smoother.confidence) : 0, elapsedSeconds: r.started ? Math.floor((now - r.started) / 1000) : 0, studySeconds, phoneEventCount: events.filter(e => e.type === 'phone').length, awayEventCount: events.filter(e => e.type === 'away').length, offTaskEventCount: events.filter(e => e.type === 'distracted' || e.type === 'talking').length, extensionConnected: !!r.provider?.extensionConnected, companionConnected: !!r.provider?.companionConnected, cameraEvents: events, activitySegments: segments });
   }, [finishManual]);
 
   const stop = useCallback((): SensorResult => {

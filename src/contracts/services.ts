@@ -50,6 +50,8 @@ export interface SensorLiveState {
   extensionConnected: boolean;
   /** True when the desktop companion (npm run companion) reports the foreground app. */
   companionConnected: boolean;
+  /** The screen in front right now is a distracting site/app. */
+  screenDistracted: boolean;
   /** Live head angle in degrees relative to the calibrated screen pose (+pitch = looking down). */
   headPose?: { yaw: number; pitch: number } | null;
   error?: string;
