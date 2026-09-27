@@ -98,6 +98,8 @@ const BROWSER_APPS = ['chrome', 'msedge', 'edge', 'whale', 'brave', 'opera', 'fi
 const TITLE_SITES: [string, string][] = [
   ...WEB_GAMES, ['youtube', 'youtube.com'], ['netflix', 'netflix.com'], ['disney+', 'disneyplus.com'], ['twitch', 'twitch.tv'], ['치지직', 'chzzk.naver.com'],
   ['네이버 웹툰', 'comic.naver.com'], ['webtoon', 'webtoons.com'], ['카카오페이지', 'page.kakao.com'], ['instagram', 'instagram.com'],
+  // X page titles end in " / X" ("Home / X", "… on X: \"…\" / X").
+  ['/ x', 'x.com'], ['twitter', 'twitter.com'],
   ['facebook', 'facebook.com'], ['tiktok', 'tiktok.com'], ['reddit', 'reddit.com'], ['google docs', 'docs.google.com'],
   ['google 문서', 'docs.google.com'], ['notion', 'notion.so'], ['wikipedia', 'wikipedia.org'], ['khan academy', 'khanacademy.org'],
 ]

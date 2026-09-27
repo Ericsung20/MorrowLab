@@ -37,6 +37,9 @@ describe('classifyWindow (desktop companion)', () => {
     expect(chrome('NewJeans Official MV - YouTube').category).toBe('distraction')
     expect(chrome('Netflix').category).toBe('distraction')
     expect(chrome('네이버 웹툰').category).toBe('distraction')
+    expect(chrome('Home / X').category).toBe('distraction')
+    expect(chrome('Elon Musk on X: "hello" / X').category).toBe('distraction')
+    expect(chrome('Twitter').category).toBe('distraction')
     expect(chrome('Essay draft - Google Docs').category).toBe('study')
     expect(chrome('Weather forecast').category).toBe('neutral')
     // macOS reports the real URL; it wins over title guessing.
