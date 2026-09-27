@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "MorrowLab Tab Tracker",
+  "version": "1.0.0",
+  "description": "Tells your MorrowLab study session which tab is active so study tabs and distractions can be told apart. Nothing leaves your computer.",
+  "permissions": ["tabs"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
