@@ -1,5 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import { ArrowUpRight, BookOpen, CalendarDays, Leaf } from "lucide-react";
+import { ArrowUpRight, BookOpen, CalendarDays } from "lucide-react";
 import Dashboard from "../pages/Dashboard";
 import Session from "../pages/Session";
 import Summary from "../pages/Summary";
@@ -10,13 +10,11 @@ export default function App() {
   return (
     <>
       <header className="site-header">
-        <NavLink className="brand" to="/">
-          <span className="brand-mark">
-            <Leaf size={24} />
-          </span>
-          <span>
-            MorrowLab<small>Learn how you learn.</small>
-          </span>
+        <NavLink className="brand" to="/" aria-label="MorrowLab home">
+          <picture className="brand-logo">
+            <source media="(max-width: 520px)" srcSet="/brand/morrowlab-mark.svg" />
+            <img src="/brand/morrowlab-lockup.png" alt="MorrowLab" width="1680" height="200" />
+          </picture>
         </NavLink>
         <nav aria-label="Main navigation">
           <NavLink to="/" end>

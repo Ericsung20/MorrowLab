@@ -6,10 +6,21 @@ STAGING="$(mktemp -d /private/tmp/morrowlab-companion.XXXXXX)"
 trap 'rm -rf "$STAGING"' EXIT
 APP="$STAGING/MorrowLab Companion.app"
 DOWNLOADS="$PROJECT_ROOT/public/downloads"
-mkdir -p "$APP/Contents/MacOS" "$OUTPUT/module-cache" "$DOWNLOADS"
+mkdir -p "$APP/Contents/Resources" "$APP/Contents/MacOS" "$OUTPUT/module-cache" "$DOWNLOADS"
 # Hide any prior download until the new signed package is complete.
 rm -f "$DOWNLOADS/companion.json"
 cp "$PROJECT_ROOT/companion/macos/Info.plist" "$APP/Contents/Info.plist"
+# Derive the native icon sizes from the supplied artwork without redrawing it.
+ICONSET="$STAGING/MorrowLab.iconset"
+mkdir -p "$ICONSET"
+for SIZE in 16 32 128 256 512; do
+  sips -z "$SIZE" "$SIZE" "$PROJECT_ROOT/public/brand/morrowlab-app-icon.png" --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+  DOUBLE=$((SIZE * 2))
+  sips -z "$DOUBLE" "$DOUBLE" "$PROJECT_ROOT/public/brand/morrowlab-app-icon.png" --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/MorrowLab.icns"
+cp "$PROJECT_ROOT/public/brand/morrowlab-mark.png" "$APP/Contents/Resources/morrowlab-mark.png"
+
 for ARCH in arm64 x86_64; do
   xcrun swiftc -swift-version 5 -O -target "$ARCH-apple-macos13.0" \
     -module-cache-path "$OUTPUT/module-cache" \

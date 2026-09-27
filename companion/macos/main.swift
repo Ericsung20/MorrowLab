@@ -54,7 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "ML"
+        if let path = Bundle.main.path(forResource: "morrowlab-mark", ofType: "png"), let mark = NSImage(contentsOfFile: path) {
+            mark.size = NSSize(width: 22, height: 22)
+            statusItem.button?.image = mark
+        } else { statusItem.button?.title = "ML" }
         statusItem.button?.toolTip = "MorrowLab Companion"
         let menu = NSMenu()
         menu.addItem(withTitle: "Set up MorrowLab Companion…", action: #selector(showSetup), keyEquivalent: "")
@@ -89,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(button("Allow Screen Recording…", #selector(allowScreen)))
         stack.addArrangedSubview(connection)
         stack.addArrangedSubview(activity)
-        let footer = NSTextField(wrappingLabelWithString: "Only the foreground app, window title and available browser URL are shared with local MorrowLab pages during study sessions. No screenshots, audio or keystrokes are collected.\n\nIf macOS asks you to quit after granting permission, quit from the ML menu and reopen the app. Closing this window keeps the companion running.")
+        let footer = NSTextField(wrappingLabelWithString: "Only the foreground app, window title and available browser URL are shared with local MorrowLab pages during study sessions. No screenshots, audio or keystrokes are collected.\n\nIf macOS asks you to quit after granting permission, quit from the mascot menu and reopen the app. Closing this window keeps the companion running.")
         footer.font = .systemFont(ofSize: 12); footer.textColor = .secondaryLabelColor
         stack.addArrangedSubview(footer)
         window.contentView!.addSubview(stack)

@@ -12,12 +12,12 @@ remain unknown rather than being assumed to be games.
 3. Use **Allow Accessibility** and **Allow Screen Recording** in the setup window. Enable
    **MorrowLab Companion** in each macOS settings pane. macOS requires the user's approval;
    the website and companion cannot grant these permissions themselves.
-4. If macOS requests a quit/reopen, quit from the **ML** menu-bar menu and reopen the app.
+4. If macOS requests a quit/reopen, quit from the **MorrowLab mascot** menu-bar menu and reopen the app.
 5. Return to MorrowLab. The page checks permissions automatically and sessions reconnect without
    needing to restart. **Open companion** opens setup again after the app has been launched once.
 
 Requires macOS 13 or later. The package contains Apple silicon and Intel executables and requires
-neither Node nor npm. Closing the setup window leaves the menu-bar app running. Quit it from **ML →
+neither Node nor npm. Closing the setup window leaves the menu-bar app running. Quit it from **MorrowLab mascot →
 Quit Companion**. It does not install a login item or start itself at login.
 
 Only one companion can use port 47615. Stop an existing `npm run companion` process before opening

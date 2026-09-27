@@ -314,9 +314,11 @@ export default function Session() {
                   <h2>Your focus starts here.</h2>
                 </div>
               )}
-              <div className="camera-mascot">
-                <HeadPose pose={running ? state.headPose ?? null : null} />
-              </div>
+              {session && (
+                <div className="camera-mascot">
+                  <HeadPose pose={running ? state.headPose ?? null : null} />
+                </div>
+              )}
               <div className="camera-bottom">
                 <div>
                   <span className="eyebrow">CURRENT STATE</span>

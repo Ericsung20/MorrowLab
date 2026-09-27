@@ -59,7 +59,7 @@ export function CompanionSetup() {
       {ready ? <CheckCircle2 size={20} /> : <Laptop size={20} />}
       <div><h3>{headline}</h3><p>Recognize Safari, games, and other apps while you study.</p></div>
     </div>
-    {ready ? <p className="companion-ready" role="status">Both permissions are allowed. Keep the ML menu-bar app open; study sessions connect automatically.</p> : <>
+    {ready ? <p className="companion-ready" role="status">Both permissions are allowed. Keep the MorrowLab menu-bar app open; study sessions connect automatically.</p> : <>
       <ol className="companion-steps">
         <li><strong>Open MorrowLab Companion</strong><span>Download the Mac app, unzip it, move it to Applications, and double-click it. No Terminal needed.</span></li>
         <li><strong>Allow two Mac permissions</strong><span>In the companion, use “Allow Accessibility” and “Allow Screen Recording.” Enable <b>MorrowLab Companion</b> in the settings that open.</span></li>
