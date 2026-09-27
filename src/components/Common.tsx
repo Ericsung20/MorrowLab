@@ -52,6 +52,14 @@ export function BehaviorTimeline({ events }: { events: CameraEvent[] }) {
           <i className="away" />
           Away
         </span>
+        <span>
+          <i className="distracted" />
+          Looking elsewhere
+        </span>
+        <span>
+          <i className="talking" />
+          Chatting
+        </span>
       </div>
       {!events.length && (
         <p className="muted">Events will appear when monitoring starts.</p>
@@ -71,9 +79,13 @@ export function ActivityList({ segments }: { segments: ActivitySegment[] }) {
   return (
     <div className="event-list">
       {segments.length ? (
-        segments.map((s) => (
+        // Newest first.
+        [...segments].reverse().map((s) => (
           <div key={s.id}>
-            <span>{s.label}</span>
+            <span>
+              {s.label}
+              {s.category && <span className={`category ${s.category}`}>{s.category}</span>}
+            </span>
             <span>{duration(s.durationSec)}</span>
           </div>
         ))

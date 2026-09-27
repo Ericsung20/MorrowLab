@@ -57,6 +57,10 @@ export default function Dashboard() {
     });
   }
   const tasks = data?.tasks ?? [];
+  const studiedMinutes = new Map<string, number>();
+  for (const s of data?.sessions ?? [])
+    for (const t of s.taskBreakdown)
+      studiedMinutes.set(t.taskId, (studiedMinutes.get(t.taskId) ?? 0) + t.seconds / 60);
   const remaining = tasks.filter((t) => t.status === "todo");
   return (
     <>
@@ -72,9 +76,9 @@ export default function Dashboard() {
           <h1>Good morning.</h1>
           <p>Here’s your plan for today. Make room for a little progress.</p>
         </div>
-        <span className="soft-badge">
-          <span className="dot" /> One session at a time
-        </span>
+        <Link className="button" to="/session">
+          Start study session <ArrowRight size={16} />
+        </Link>
       </div>
       <ErrorNotice message={error || actionError} />
       {loading ? (
@@ -120,7 +124,7 @@ export default function Dashboard() {
                 <h2>
                   Today’s plan <span className="count">{tasks.length}</span>
                 </h2>
-                <span className="muted">Small steps, meaningful progress</span>
+                <span className="muted">One session covers them all — MorrowLab tracks what you work on</span>
               </div>
               {!tasks.length && (
                 <div className="panel empty">
@@ -152,18 +156,14 @@ export default function Dashboard() {
                           <Clock3 size={13} /> {t.estimatedMinutes} min
                         </span>
                         <span>Due {dateLabel(t.deadlineISO)}</span>
+                        {!!studiedMinutes.get(t.id) && (
+                          <span>{Math.round(studiedMinutes.get(t.id)!)} min studied</span>
+                        )}
                         {t.status === "done" && (
                           <span className="done">Complete</span>
                         )}
                       </div>
                     </div>
-                    <Link
-                      className="button secondary compact"
-                      to={`/session/${t.id}`}
-                    >
-                      {t.status === "done" ? "Study again" : "Start Session"}
-                      <ArrowRight size={15} />
-                    </Link>
                   </article>
                 ))}
               </div>

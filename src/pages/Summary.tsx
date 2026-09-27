@@ -42,7 +42,9 @@ export default function Summary() {
         <div>
           <h1>Progress, worth noticing.</h1>
           <p>
-            {session.taskTitle} · {session.subject}
+            {session.taskBreakdown.length
+              ? session.taskBreakdown.map((t) => `${t.taskTitle} (${Math.round(t.seconds / 60)} min)`).join(" · ")
+              : session.subject}
           </p>
         </div>
         <Link className="button" to="/tomorrow">
@@ -87,6 +89,10 @@ export default function Summary() {
           [
             "Away events",
             session.cameraEvents.filter((e) => e.type === "away").length,
+          ],
+          [
+            "Off-task events",
+            session.cameraEvents.filter((e) => e.type === "distracted" || e.type === "talking").length,
           ],
         ].map(([label, value]) => (
           <div className="panel" key={label}>
