@@ -51,6 +51,8 @@ describe("MorrowLab product flow", () => {
       await screen.findByRole("button", { name: "Start monitoring" }),
     );
     await screen.findByRole("button", { name: "Monitoring active" });
+    // The screen activity log is stored, not shown, during the session.
+    expect(screen.queryByText("Screen activity")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Simulate phone" }));
     // Real intervals must have positive elapsed time before they can be persisted.
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -71,6 +73,7 @@ describe("MorrowLab product flow", () => {
     await screen.findByRole("heading", { name: "Progress, worth noticing." });
     expect(screen.getByText("A useful focus block.")).toBeInTheDocument();
     expect(screen.getByText("Calculus Homework (25 min) · CS Reading (10 min)")).toBeInTheDocument();
+    expect(screen.getByText("Screen distraction").nextElementSibling).toHaveTextContent("00:00");
     const sessions = await dataService.getRecentSessions();
     const latest = sessions.find((s) => !s.isDemoHistory)!;
     expect(latest.cameraEvents.map((e) => e.type)).toEqual([
