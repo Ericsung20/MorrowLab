@@ -1,5 +1,4 @@
 import type { ActivitySegment, CameraEvent, StudySession } from '../../contracts/morrowlab'
-import { ACTIVITY_LABELS } from '../../contracts/activity'
 
 export function clamp(value: number, min: number, max: number): number {
   return Number.isNaN(value) ? min : Math.min(max, Math.max(min, value))
@@ -7,19 +6,18 @@ export function clamp(value: number, min: number, max: number): number {
 
 export function calculateDistractionRatio(cameraEvents: CameraEvent[], durationSec: number): number {
   const interrupted = cameraEvents.reduce((sum, event) =>
-    sum + (event.type === 'phone' || event.type === 'away' ? Math.max(0, event.durationSec || 0) : 0), 0)
+    sum + (event.type !== 'studying' ? Math.max(0, event.durationSec || 0) : 0), 0)
   return clamp(interrupted / Math.max(durationSec || 0, 1), 0, 1)
 }
 
-/** Unknown/demo activity is not evidence of distraction. Null means unmeasured. */
+/** Study share of classified browser time. Neutral/unknown/demo time is not evidence either way. Null means unmeasured. */
 export function calculateScreenScore(segments: ActivitySegment[], durationSec: number): number | null {
   const known = segments.filter(s => s.source === 'browser' && Number.isFinite(s.durationSec) && s.durationSec > 0 &&
-    (Object.values(ACTIVITY_LABELS) as string[]).includes(s.label))
+    (s.category === 'study' || s.category === 'distraction'))
   if (!known.length || !Number.isFinite(durationSec) || durationSec <= 0) return null
   const total = known.reduce((sum, s) => sum + s.durationSec, 0)
-  const outside = known.filter(s => s.label === ACTIVITY_LABELS.other).reduce((sum, s) => sum + s.durationSec, 0)
-  // Score only measured time; gaps and arbitrary app names are not counted as study.
-  return 100 * (1 - clamp(outside / total, 0, 1))
+  const distracted = known.filter(s => s.category === 'distraction').reduce((sum, s) => sum + s.durationSec, 0)
+  return 100 * (1 - clamp(distracted / total, 0, 1))
 }
 
 /** With screen evidence: 30/30/20/10/10. Otherwise retain the legacy 35/35/20/10 formula. */
