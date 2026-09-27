@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { StudyRecommendation, StudySession, StudyTask } from '../contracts/morrowlab'
-import type { StudyActivityMode } from '../contracts/activity'
 import { calculateScreenScore } from '../features/scoring/calculateSessionScore'
+import { estimateTaskTime } from '../features/activity/classifyActivity'
 import { MorrowLabDB } from '../db/db'
 import { createLocalMorrowLabDataService } from '../services/localMorrowLabDataService'
 import { useStudySensors, type SensorResult } from '../features/sensors/useStudySensors'
@@ -12,9 +12,9 @@ const service = createLocalMorrowLabDataService(new MorrowLabDB('MorrowLabSandbo
 
 export function Sandbox() {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const sensors = useStudySensors(videoRef)
-  const [camera, setCamera] = useState(false)
   const [tasks, setTasks] = useState<StudyTask[]>([])
+  const sensors = useStudySensors(videoRef, { tasks: tasks.filter(t => t.status === 'todo') })
+  const [camera, setCamera] = useState(false)
   const [sessions, setSessions] = useState<StudySession[]>([])
   const [recommendations, setRecommendations] = useState<StudyRecommendation[]>([])
   const [insights, setInsights] = useState<string[]>([])
@@ -27,7 +27,6 @@ export function Sandbox() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [preview, setPreview] = useState('대기')
-  const [activityMode, setActivityMode] = useState<StudyActivityMode>('strict')
 
   async function refresh() {
     const [nextTasks, nextSessions, nextInsights, nextRecommendations] = await Promise.all([
@@ -63,7 +62,7 @@ export function Sandbox() {
     <p role="status">{message}</p>
     <section>
       <h2>공부 세션</h2>
-      <label>할 일 <select value={selected} disabled={!!active || busy} onChange={e => setSelected(e.target.value)}>
+      <label>100% 완료 시 끝낼 할 일 <select value={selected} disabled={!!active || busy} onChange={e => setSelected(e.target.value)}>
         <option value="">데모를 불러온 뒤 선택하세요</option>
         {tasks.filter(t => t.status === 'todo').map(t => <option key={t.id} value={t.id}>{t.title} · {t.estimatedMinutes}분</option>)}
       </select></label>
@@ -79,8 +78,8 @@ export function Sandbox() {
         <p role="status">카메라: {preview} · 감지 모델: {sensors.modelStatus === 'loading' ? '다운로드·초기화 중' : sensors.modelStatus === 'ready' ? '준비 완료' : sensors.modelStatus === 'error' ? '오류 (아래 안내 확인)' : '대기'}</p>
       </>}
       <div className="actions">
-        <button disabled={busy || !!active || !selected} onClick={() => void run(async () => {
-          const session = await service.startSession(selected)
+        <button disabled={busy || !!active} onClick={() => void run(async () => {
+          const session = await service.startSession()
           setActive(session); setStopped(undefined)
           setPreview('카메라 연결 중')
           void sensors.start().catch(error => setMessage(String(error)))
@@ -91,15 +90,7 @@ export function Sandbox() {
       <p>경과 {sensors.elapsedSeconds}초 · 휴대폰 {sensors.phoneEventCount}회 · 자리 비움 {sensors.awayEventCount}회 · 감지 상태 {sensors.currentState ?? '미확인'}</p>
       {camera && sensors.error && <p role="alert">카메라 안내: {sensors.error} 수동 테스트는 계속할 수 있습니다.</p>}
       <p>각 시뮬레이션은 실제로 5초가 지납니다. 두 버튼을 연속해서 누르면 앞 이벤트가 짧게 종료됩니다.</p>
-      <label>화면 활동 모드 <select value={activityMode} disabled={!!stopped} onChange={e => {
-        const mode = e.target.value as StudyActivityMode
-        setActivityMode(mode); sensors.setStudyMode(mode)
-      }}>
-        <option value="strict">기본: 다른 탭·창은 감점</option>
-        <option value="research">자료 조사: 다른 탭·창도 공부로 인정</option>
-        <option value="lecture">강의 시청: 다른 탭·창도 공부로 인정</option>
-      </select></label>
-      <p>다른 화면으로 이동하기 전에 모드를 선택하세요. 선택 이후 시간에만 적용됩니다. 자료 조사·강의는 본인 선언이며, 실제 사이트나 앱 내용은 확인하지 않습니다. 끝나면 기본 모드로 돌아오세요.</p>
+      <p>확장 프로그램 {sensors.extensionConnected ? '연결됨: 다른 탭의 제목·사이트로 공부/딴짓을 판별합니다.' : '미연결: 다른 탭은 "미확인"으로만 기록됩니다 (extension/ 폴더 참고).'}</p>
       <p>화면 활동 점수: {calculateScreenScore(sensors.activitySegments, sensors.elapsedSeconds)?.toFixed(0) ?? '미측정'} · 집중도 30% + 이해도 30% + 완료율 20% + 카메라 10% + 화면 10%. 화면 미측정 시 기존 비중(35·35·20·10%)을 사용합니다.</p>
       <div className="actions">
         <label>집중도 <select value={focus} onChange={e => setFocus(Number(e.target.value))}>{[1, 2, 3, 4, 5].map(n => <option key={n}>{n}</option>)}</select></label>
@@ -109,7 +100,9 @@ export function Sandbox() {
           if (!active) return
           const output = stopped ?? sensors.stop()
           setStopped(output)
-          const finished = await service.finishSession(active.id, { ...output, reflection: { focus, understanding, completionPct: completion } })
+          const todo = tasks.filter(t => t.status === 'todo')
+          const finished = await service.finishSession(active.id, { ...output, reflection: { focus, understanding, completionPct: completion },
+            taskBreakdown: estimateTaskTime(output.activitySegments, output.cameraEvents, todo), completedTaskIds: completion === 100 && selected ? [selected] : [] })
           setActive(undefined); setStopped(undefined)
           setMessage(`저장 완료: Session Score ${finished.score}/100`)
           await refresh()
@@ -123,7 +116,7 @@ export function Sandbox() {
       <ul>{r.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
     </article>)}</section>
     <section><h2>저장된 기록 ({sessions.length})</h2>{sessions.map(s => <details key={s.id}>
-      <summary>{s.isDemoHistory ? '[데모] ' : ''}{s.taskTitle} · {new Date(s.startedAtISO).toLocaleString()} · {s.score === undefined ? '미완료' : `${s.score}점 (저장 당시 점수)`}</summary>
+      <summary>{s.isDemoHistory ? '[데모] ' : ''}{s.taskBreakdown.map(t => t.taskTitle).join(', ') || s.subject} · {new Date(s.startedAtISO).toLocaleString()} · {s.score === undefined ? '미완료' : `${s.score}점 (저장 당시 점수)`}</summary>
       <pre>{JSON.stringify(s, null, 2)}</pre>
     </details>)}</section>
   </main>

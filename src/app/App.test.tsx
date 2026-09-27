@@ -28,10 +28,8 @@ describe("MorrowLab product flow", () => {
   it('can end and save while camera permission is still pending', async () => {
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: () => new Promise(() => {}) } });
     await dataService.loadDemoWorkspace();
-    const task = (await dataService.listTasks())[0];
-    renderRoute(`/session/${task.id}`);
-    fireEvent.change(await screen.findByLabelText(/Screen activity mode/), { target: { value: 'research' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Start monitoring' }));
+    renderRoute('/session');
+    fireEvent.click(await screen.findByRole('button', { name: 'Start monitoring' }));
     const end = await screen.findByRole('button', { name: 'End session' });
     await waitFor(() => expect(end).toBeEnabled());
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -39,7 +37,7 @@ describe("MorrowLab product flow", () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Finish session' }));
     await screen.findByRole('heading', { name: 'Progress, worth noticing.' });
     const saved = (await dataService.getRecentSessions()).find(s => !s.isDemoHistory)!;
-    expect(saved.activitySegments.some(s => s.label === 'Study: research (self-reported)')).toBe(true);
+    expect(saved.taskBreakdown).toEqual([]);
     expect(saved.score).toBe(calculateSessionScore(saved));
   });
   it("loads demo data, records fallback events, saves reflection and shows tomorrow", async () => {
@@ -47,11 +45,8 @@ describe("MorrowLab product flow", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /Load demo workspace/ }),
     );
-    const starts = await screen.findAllByRole("link", {
-      name: /Start Session/,
-    });
-    expect(starts).toHaveLength(3);
-    fireEvent.click(starts[0]);
+    await screen.findByRole("heading", { name: "Calculus Homework" });
+    fireEvent.click(screen.getByRole("link", { name: /Start study session/ }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Start monitoring" }),
     );
@@ -63,6 +58,11 @@ describe("MorrowLab product flow", () => {
     await new Promise(resolve => setTimeout(resolve, 20));
     fireEvent.click(screen.getByRole("button", { name: "End session" }));
     await screen.findByRole("heading", { name: "How did it go?" });
+    // No tab evidence yet, so the estimate starts at 0; the student fills in what they did.
+    expect(screen.getByLabelText("Minutes on Calculus Homework")).toHaveValue(0);
+    fireEvent.change(screen.getByLabelText("Minutes on Calculus Homework"), { target: { value: "25" } });
+    fireEvent.change(screen.getByLabelText("Minutes on CS Reading"), { target: { value: "10" } });
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Finished" })[0]);
     fireEvent.change(screen.getByRole("slider"), { target: { value: "100" } });
     fireEvent.change(screen.getByLabelText("Optional note"), {
       target: { value: "A useful focus block." },
@@ -70,6 +70,7 @@ describe("MorrowLab product flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Finish session" }));
     await screen.findByRole("heading", { name: "Progress, worth noticing." });
     expect(screen.getByText("A useful focus block.")).toBeInTheDocument();
+    expect(screen.getByText("Calculus Homework (25 min) · CS Reading (10 min)")).toBeInTheDocument();
     const sessions = await dataService.getRecentSessions();
     const latest = sessions.find((s) => !s.isDemoHistory)!;
     expect(latest.cameraEvents.map((e) => e.type)).toEqual([
@@ -79,6 +80,9 @@ describe("MorrowLab product flow", () => {
     expect(latest.reflection?.completionPct).toBe(100);
     expect(latest.score).toBe(calculateSessionScore(latest));
     expect(latest.activitySegments.every(s => s.source === 'browser')).toBe(true);
+    expect(latest.taskBreakdown.map(t => [t.taskTitle, t.seconds])).toEqual([["Calculus Homework", 1500], ["CS Reading", 600]]);
+    expect(latest.subject).toBe("Math");
+    expect((await dataService.listTasks()).find(t => t.title === "Calculus Homework")!.status).toBe("done");
     fireEvent.click(screen.getByRole("link", { name: /See tomorrow/ }));
     await screen.findByText("Based on 8 recent sessions");
     expect(screen.getByText("Includes demo history")).toBeInTheDocument();
@@ -114,11 +118,10 @@ describe("MorrowLab product flow", () => {
   });
   it("shows service failures and lets a failed session start be retried", async () => {
     await dataService.loadDemoWorkspace();
-    const task = (await dataService.listTasks())[0];
     vi.spyOn(dataService, "startSession").mockRejectedValueOnce(
       new Error("Storage is temporarily unavailable."),
     );
-    renderRoute(`/session/${task.id}`);
+    renderRoute("/session");
     fireEvent.click(
       await screen.findByRole("button", { name: "Start monitoring" }),
     );
@@ -130,11 +133,10 @@ describe("MorrowLab product flow", () => {
   });
   it("retains reflection when saving fails and retries without duplicating history", async () => {
     await dataService.loadDemoWorkspace();
-    const task = (await dataService.listTasks())[0];
     vi.spyOn(dataService, "finishSession").mockRejectedValueOnce(
       new Error("Could not save. Try again."),
     );
-    renderRoute(`/session/${task.id}`);
+    renderRoute("/session");
     fireEvent.click(
       await screen.findByRole("button", { name: "Start monitoring" }),
     );
@@ -155,7 +157,7 @@ describe("MorrowLab product flow", () => {
     ).toHaveLength(1);
   });
   it.each([
-    ["/session/missing", "Task not found"],
+    ["/session/old-task-link", "Good morning."],
     ["/summary/missing", "Session not found"],
     ["/unknown", "Good morning."],
   ])("handles %s", async (route, heading) => {
