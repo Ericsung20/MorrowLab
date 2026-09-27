@@ -29,7 +29,13 @@ A web page can't see other tabs or apps. Two optional helpers fill that in:
   from their title.
 - **Browser extension** (`extension/`): reports the exact active tab (title + URL); preferred for tabs.
 
-Without either, other tabs/apps are recorded as neutral "other tab/window" time. Classified time is
+Titles are judged by rules first (`classifyActivity.ts`: known sites/apps, study/play words, task names).
+Titles the rules can't decide go to a **local AI** (`aiClassifier.ts` + `aiWorker.ts`): a small multilingual
+sentence model (~135 MB, downloaded once and cached by the browser) running in a Web Worker compares the title
+with example phrases for study / play / everyday tools. Nothing leaves the device. Low-confidence answers stay
+neutral, and a title with study words is never judged a distraction.
+
+Without either helper, other tabs/apps are recorded as neutral "other tab/window" time. Classified time is
 study, distraction or neutral (for example, YouTube is judged by video title).
 
 ## Product routes
